@@ -1,175 +1,141 @@
 "use client";
 
-import { useState } from "react";
-
-// ── Tipos ─────────────────────────────────────────────────────
-interface IndicadorData {
-  veiculo: { placa: string; marca: string; ano: number; frota: string; modelo: string };
-  motorista: string;
-  periodo: { inicio: string; fim: string };
-  nota: number;
-  indicadores: {
-    faixaVerde: number;
-    faixaVerdeTempo: string;
-    embalo: number;
-    embaloTempo: string;
-    motorOcioso: number;
-    motorOciosoTempo: string;
-    acelAcimaMedioTempo: string;
-    acelAcimaVerde: number;
-    excessoVelocidade: number;
-    excessoVelocidadeTempo: string;
-    faixaVerdeTotalPerc: number;
-    faixaVerdeTotalTempo: string;
-    faixaVerdeFinalPerc: number;
-    faixaVerdeFinalTempo: string;
-    freioMotor: number;
-    freioMotorTempo: string;
-    emMovimento: number;
-    emMovimentoTempo: string;
-  };
-  acelerador: { ideal: number; atencao: number; critico: number };
-  estatisticas: {
-    kmTotal: number;
-    velocidadeMedia: number;
-    consumoTotal: number;
-    mediaKml: number;
-    odometro: number;
-    frenadasAltaVelocidade: number;
-    frenadasTotais: number;
-    frenadasPor100km: number;
-  };
-}
-
-// ── Dados simulados (conectar à API /api/v1/indicadores) ──────
-const MOCK: IndicadorData = {
-  veiculo: { placa: "INOVA_2082", marca: "IVECO", ano: 2014, frota: "600", modelo: "IVECO/STRALIS 600S44T" },
-  motorista: "William Muniz Batista",
-  periodo: { inicio: "01/06/2026 00:00", fim: "01/06/2026 23:59" },
-  nota: 100,
-  indicadores: {
-    faixaVerde: 96, faixaVerdeTempo: "07:41:54",
-    embalo: 28, embaloTempo: "02:15:40",
-    motorOcioso: 1, motorOciosoTempo: "00:06:00",
-    acelAcimaVerde: 0, acelAcimaMedioTempo: "00:00:49",
-    excessoVelocidade: 0, excessoVelocidadeTempo: "00:00:00",
-    faixaVerdeTotalPerc: 100, faixaVerdeTotalTempo: "08:01:54",
-    faixaVerdeFinalPerc: 4, faixaVerdeFinalTempo: "00:21:00",
-    freioMotor: 5, freioMotorTempo: "00:26:01",
-    emMovimento: 99, emMovimentoTempo: "08:00:30",
-  },
-  acelerador: { ideal: 54.63, atencao: 36.28, critico: 9.09 },
-  estatisticas: {
-    kmTotal: 407.27, velocidadeMedia: 52.1, consumoTotal: 172.5,
-    mediaKml: 2.36, odometro: 1028739.45, frenadasAltaVelocidade: 10,
-    frenadasTotais: 59, frenadasPor100km: 14.5,
-  },
-};
+import { useState, useEffect, useCallback } from "react";
+import { apiLogin, apiFetch } from "@/lib/api";
 
 // ── Helpers de cor ────────────────────────────────────────────
+function percCor(valor: number, thresholds: [number, number]) {
+  if (valor >= thresholds[0]) return "text-green-400";
+  if (valor >= thresholds[1]) return "text-yellow-400";
+  return "text-red-400";
+}
+function inversoCor(valor: number, thresholds: [number, number]) {
+  if (valor <= thresholds[0]) return "text-green-400";
+  if (valor <= thresholds[1]) return "text-yellow-400";
+  return "text-red-400";
+}
 function notaCor(nota: number) {
-  if (nota >= 80) return { text: "text-green-400", ring: "#22c55e", label: "Ótimo" };
-  if (nota >= 60) return { text: "text-yellow-400", ring: "#eab308", label: "Regular" };
-  return { text: "text-red-400", ring: "#ef4444", label: "Crítico" };
+  if (nota >= 80) return { ring: "#22c55e", label: "Ótimo", text: "text-green-400" };
+  if (nota >= 60) return { ring: "#eab308", label: "Regular", text: "text-yellow-400" };
+  return { ring: "#ef4444", label: "Crítico", text: "text-red-400" };
 }
 
-function percCor(valor: number, inverso = false) {
-  const bom = inverso ? valor <= 5 : valor >= 80;
-  const medio = inverso ? valor <= 15 : valor >= 50;
-  if (bom) return "text-green-400";
-  if (medio) return "text-yellow-400";
-  return "text-red-400";
-}
-
-function acessoCor(valor: number) {
-  // Para motor ocioso, excesso de velocidade, acel acima verde — menos é melhor
-  if (valor === 0) return "text-green-400";
-  if (valor <= 3) return "text-yellow-400";
-  return "text-red-400";
-}
-
-// ── Gauge circular SVG ────────────────────────────────────────
+// ── Gauge circular ────────────────────────────────────────────
 function GaugeCircular({ nota }: { nota: number }) {
   const cor = notaCor(nota);
-  const r = 52;
-  const circunf = 2 * Math.PI * r;
-  const preenchido = (nota / 100) * circunf;
-
+  const r = 52, c = 2 * Math.PI * r;
   return (
-    <div className="flex flex-col items-center">
-      <svg width="140" height="140" viewBox="0 0 140 140">
-        <circle cx="70" cy="70" r={r} fill="none" stroke="#1f2937" strokeWidth="12" />
-        <circle
-          cx="70" cy="70" r={r} fill="none"
-          stroke={cor.ring} strokeWidth="12"
-          strokeDasharray={`${preenchido} ${circunf}`}
-          strokeLinecap="round"
-          transform="rotate(-90 70 70)"
-        />
-        <text x="70" y="70" textAnchor="middle" dominantBaseline="central"
-          fill={cor.ring} fontSize="28" fontWeight="bold">{nota}</text>
-        <text x="70" y="94" textAnchor="middle" fill="#9ca3af" fontSize="11">{cor.label}</text>
-      </svg>
-    </div>
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      <circle cx="70" cy="70" r={r} fill="none" stroke="#1f2937" strokeWidth="12" />
+      <circle cx="70" cy="70" r={r} fill="none" stroke={cor.ring} strokeWidth="12"
+        strokeDasharray={`${(nota / 100) * c} ${c}`} strokeLinecap="round"
+        transform="rotate(-90 70 70)" />
+      <text x="70" y="68" textAnchor="middle" dominantBaseline="central"
+        fill={cor.ring} fontSize="28" fontWeight="bold">{nota ?? "—"}</text>
+      <text x="70" y="94" textAnchor="middle" fill="#9ca3af" fontSize="11">{cor.label}</text>
+    </svg>
   );
 }
 
-// ── Card de indicador ─────────────────────────────────────────
-function CardIndicador({
-  label, perc, tempo, corFn,
-}: {
-  label: string; perc: number; tempo: string; corFn: (v: number) => string;
+// ── Card indicador ────────────────────────────────────────────
+function CardIndicador({ label, perc, tempo, cor }: {
+  label: string; perc: number; tempo?: string; cor: string;
 }) {
+  const estrelas = Math.round((perc / 100) * 5);
   return (
     <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-1">
-      <span className={`text-2xl font-bold ${corFn(perc)}`}>{perc} %</span>
-      <span className="text-xs text-gray-400">{tempo}</span>
+      <span className={`text-2xl font-bold ${cor}`}>{perc} %</span>
+      {tempo && <span className="text-xs text-gray-500">{tempo}</span>}
       <div className="flex gap-0.5 mt-1">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <span key={i} className={`text-xs ${perc >= i * 20 ? corFn(perc) : "text-gray-600"}`}>★</span>
+        {[1,2,3,4,5].map(i => (
+          <span key={i} className={`text-xs ${i <= estrelas ? cor : "text-gray-700"}`}>★</span>
         ))}
       </div>
-      <span className="text-xs text-gray-300 mt-1">{label}</span>
+      <span className="text-xs text-gray-300 mt-1 leading-tight">{label}</span>
     </div>
   );
 }
 
-// ── Barra do acelerador ───────────────────────────────────────
+// ── Barra acelerador ──────────────────────────────────────────
 function BarraAcelerador({ ideal, atencao, critico }: { ideal: number; atencao: number; critico: number }) {
   return (
     <div className="bg-gray-800 rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-gray-300 mb-4">Uso Pressão do Acelerador</h3>
-      <div className="flex gap-2 h-32 items-end mb-3">
-        <div className="flex flex-col items-center gap-1 flex-1">
-          <span className="text-green-400 text-sm font-bold">{ideal}%</span>
-          <div className="w-full bg-green-500 rounded-t" style={{ height: `${ideal}%`, minHeight: 4 }} />
-        </div>
-        <div className="flex flex-col items-center gap-1 flex-1">
-          <span className="text-yellow-400 text-sm font-bold">{atencao}%</span>
-          <div className="w-full bg-yellow-500 rounded-t" style={{ height: `${atencao}%`, minHeight: 4 }} />
-        </div>
-        <div className="flex flex-col items-center gap-1 flex-1">
-          <span className="text-red-400 text-sm font-bold">{critico}%</span>
-          <div className="w-full bg-red-500 rounded-t" style={{ height: `${critico * 2}%`, minHeight: 4 }} />
-        </div>
-      </div>
-      <div className="flex gap-4 text-xs text-gray-400">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Ideal</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> Atenção</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Crítico</span>
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Pressão do Acelerador</h3>
+      <div className="flex gap-3 h-28 items-end mb-3">
+        {[
+          { label: "Ideal", val: ideal, bg: "bg-green-500", text: "text-green-400" },
+          { label: "Atenção", val: atencao, bg: "bg-yellow-500", text: "text-yellow-400" },
+          { label: "Crítico", val: critico, bg: "bg-red-500", text: "text-red-400" },
+        ].map(b => (
+          <div key={b.label} className="flex flex-col items-center gap-1 flex-1">
+            <span className={`${b.text} text-sm font-bold`}>{b.val?.toFixed(1)}%</span>
+            <div className={`w-full ${b.bg} rounded-t`} style={{ height: `${Math.max(b.val ?? 0, 2)}%` }} />
+            <span className="text-xs text-gray-500">{b.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// ── Card estatística ──────────────────────────────────────────
+// ── Stat card ─────────────────────────────────────────────────
 function Stat({ icon, label, valor }: { icon: string; label: string; valor: string }) {
   return (
     <div className="bg-gray-800 rounded-xl p-4 flex items-center gap-3">
-      <span className="text-2xl">{icon}</span>
+      <span className="text-xl">{icon}</span>
       <div>
-        <p className="text-xs text-gray-400">{label}</p>
+        <p className="text-xs text-gray-500">{label}</p>
         <p className="text-white font-bold text-sm">{valor}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Tela de login ─────────────────────────────────────────────
+function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void }) {
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setCarregando(true); setErro("");
+    try {
+      const { accessToken, usuario } = await apiLogin(email, senha);
+      onLogin(accessToken, usuario.nome);
+    } catch {
+      setErro("E-mail ou senha inválidos.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
+      <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="bg-emerald-500 text-black font-black text-lg px-3 py-1 rounded-lg">INFO</div>
+          <div>
+            <p className="text-xs text-emerald-400 tracking-widest uppercase">Infobridge</p>
+            <p className="text-white font-bold">Info Analise</p>
+          </div>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">E-mail</label>
+            <input className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Senha</label>
+            <input className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              type="password" value={senha} onChange={e => setSenha(e.target.value)} required />
+          </div>
+          {erro && <p className="text-red-400 text-xs">{erro}</p>}
+          <button className="w-full bg-emerald-600 hover:bg-emerald-500 rounded-lg py-2 text-sm font-bold transition-colors disabled:opacity-50"
+            disabled={carregando}>{carregando ? "Entrando..." : "Entrar"}</button>
+        </form>
       </div>
     </div>
   );
@@ -177,107 +143,158 @@ function Stat({ icon, label, valor }: { icon: string; label: string; valor: stri
 
 // ── Página principal ──────────────────────────────────────────
 export default function InfoAnalisePage() {
-  const [dados] = useState<IndicadorData>(MOCK);
-  const { veiculo, motorista, periodo, nota, indicadores: ind, acelerador, estatisticas: est } = dados;
+  const [token, setToken] = useState<string | null>(null);
+  const [nomeUsuario, setNomeUsuario] = useState("");
+  const [indicadores, setIndicadores] = useState<any[]>([]);
+  const [selecionado, setSelecionado] = useState<any | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const buscarIndicadores = useCallback(async (tk: string) => {
+    setCarregando(true); setErro("");
+    try {
+      const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=50", tk);
+      setIndicadores(res.dados ?? []);
+      if (res.dados?.length) setSelecionado(res.dados[0]);
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  function handleLogin(tk: string, nome: string) {
+    setToken(tk); setNomeUsuario(nome);
+    buscarIndicadores(tk);
+  }
+
+  if (!token) return <LoginForm onLogin={handleLogin} />;
+
+  const d = selecionado;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
 
-      {/* ── Cabeçalho ─────────────────────────────── */}
+      {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="bg-emerald-500 text-black font-black text-lg px-3 py-1 rounded-lg tracking-tight">
-            INFO
-          </div>
+          <div className="bg-emerald-500 text-black font-black text-lg px-3 py-1 rounded-lg">INFO</div>
           <div>
-            <p className="text-xs text-emerald-400 font-semibold tracking-widest uppercase">Infobridge</p>
-            <h1 className="text-xl font-bold text-white leading-tight">Info Analise</h1>
+            <p className="text-xs text-emerald-400 uppercase tracking-widest">Infobridge</p>
+            <h1 className="text-xl font-bold">Info Analise</h1>
           </div>
         </div>
-        <div className="text-right text-xs text-gray-400">
-          <p>{periodo.inicio} — {periodo.fim}</p>
-          <p className="text-gray-500 text-[11px] mt-0.5">Relatório de desempenho individual</p>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-400">👤 {nomeUsuario}</span>
+          <button onClick={() => setToken(null)}
+            className="text-xs text-gray-500 hover:text-red-400 transition-colors">Sair</button>
         </div>
       </div>
 
-      {/* ── Linha de identificação ────────────────── */}
-      <div className="flex flex-wrap gap-4 mb-6 bg-gray-900 rounded-xl px-5 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-emerald-400">🚛</span>
-          <span className="text-sm font-semibold">{veiculo.placa}</span>
+      {/* Seletor de período */}
+      {indicadores.length > 1 && (
+        <div className="mb-6">
+          <label className="text-xs text-gray-400 block mb-1">Período</label>
+          <select
+            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
+          >
+            {indicadores.map((ind, i) => (
+              <option key={ind.id} value={i}>
+                {ind.motorista?.nome ?? "—"} — {ind.periodoInicio} a {ind.periodoFim}
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-emerald-400">👤</span>
-          <span className="text-sm">{motorista}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-emerald-400">📅</span>
-          <span className="text-sm">{periodo.inicio} — {periodo.fim}</span>
-        </div>
-      </div>
+      )}
 
-      {/* ── Nota + Veículo + Indicadores ─────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+      {carregando && (
+        <div className="text-center py-20 text-gray-400">Carregando dados...</div>
+      )}
 
-        {/* Score e dados do veículo */}
-        <div className="bg-gray-900 rounded-xl p-5 flex flex-col items-center gap-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wider self-start">Nota de Desempenho</p>
-          <GaugeCircular nota={nota} />
-          <div className="w-full border-t border-gray-700 pt-3 space-y-1 text-xs text-gray-400">
-            <p>🚛 <span className="text-white">{veiculo.marca}</span></p>
-            <p>📅 <span className="text-white">{veiculo.ano}</span></p>
-            <p>🔢 <span className="text-white">Frota {veiculo.frota}</span></p>
-            <p>📋 <span className="text-white text-[11px]">{veiculo.modelo}</span></p>
+      {erro && (
+        <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 text-red-300 text-sm mb-6">{erro}</div>
+      )}
+
+      {!carregando && !d && !erro && (
+        <div className="text-center py-20 text-gray-500">
+          <p className="text-lg mb-2">Nenhum indicador encontrado</p>
+          <p className="text-sm">Os dados aparecem após o worker de telemetria processar as viagens.</p>
+        </div>
+      )}
+
+      {d && (
+        <>
+          {/* Linha de identificação */}
+          <div className="flex flex-wrap gap-4 mb-6 bg-gray-900 rounded-xl px-5 py-3">
+            <span className="text-sm"><span className="text-emerald-400">🚛</span> {d.veiculo?.placa ?? "—"}</span>
+            <span className="text-sm"><span className="text-emerald-400">👤</span> {d.motorista?.nome ?? "—"}</span>
+            <span className="text-sm"><span className="text-emerald-400">📅</span> {d.periodoInicio} → {d.periodoFim}</span>
           </div>
-        </div>
 
-        {/* Grade de indicadores */}
-        <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-          <CardIndicador label="Faixa verde" perc={ind.faixaVerde} tempo={ind.faixaVerdeTempo}
-            corFn={(v) => v >= 80 ? "text-green-400" : v >= 60 ? "text-yellow-400" : "text-red-400"} />
-          <CardIndicador label="Aproveitamento de embalo" perc={ind.embalo} tempo={ind.embaloTempo}
-            corFn={(v) => v >= 20 ? "text-green-400" : v >= 10 ? "text-yellow-400" : "text-red-400"} />
-          <CardIndicador label="Motor ligado parado" perc={ind.motorOcioso} tempo={ind.motorOciosoTempo}
-            corFn={(v) => v <= 5 ? "text-green-400" : v <= 15 ? "text-yellow-400" : "text-red-400"} />
-          <CardIndicador label="Acelerando acima do verde" perc={ind.acelAcimaVerde} tempo={ind.acelAcimaMedioTempo}
-            corFn={acessoCor} />
-          <CardIndicador label="Excesso de velocidade" perc={ind.excessoVelocidade} tempo={ind.excessoVelocidadeTempo}
-            corFn={acessoCor} />
-          <CardIndicador label="Faixa verde total" perc={ind.faixaVerdeTotalPerc} tempo={ind.faixaVerdeTotalTempo}
-            corFn={(v) => v >= 90 ? "text-green-400" : v >= 70 ? "text-yellow-400" : "text-red-400"} />
-          <CardIndicador label="Faixa verde final" perc={ind.faixaVerdeFinalPerc} tempo={ind.faixaVerdeFinalTempo}
-            corFn={(v) => v >= 10 ? "text-green-400" : "text-yellow-400"} />
-          <CardIndicador label="Freio motor" perc={ind.freioMotor} tempo={ind.freioMotorTempo}
-            corFn={(v) => v >= 10 ? "text-green-400" : v >= 3 ? "text-yellow-400" : "text-red-400"} />
-          <CardIndicador label="Em movimento" perc={ind.emMovimento} tempo={ind.emMovimentoTempo}
-            corFn={(v) => v >= 80 ? "text-green-400" : v >= 60 ? "text-yellow-400" : "text-red-400"} />
-        </div>
-      </div>
+          {/* Nota + veículo + indicadores */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+            <div className="bg-gray-900 rounded-xl p-5 flex flex-col items-center gap-4">
+              <p className="text-xs text-gray-400 uppercase tracking-wider self-start">Nota de Desempenho</p>
+              <GaugeCircular nota={Math.round(d.notaDesempenho ?? 0)} />
+              <div className="w-full border-t border-gray-700 pt-3 space-y-1 text-xs text-gray-400">
+                <p>🚛 <span className="text-white">{d.veiculo?.marca ?? "—"}</span></p>
+                <p>📅 <span className="text-white">{d.veiculo?.anoFabricacao ?? "—"}</span></p>
+                <p>🔢 <span className="text-white">Frota {d.veiculo?.frota ?? "—"}</span></p>
+                <p>📋 <span className="text-white text-[11px]">{d.veiculo?.modelo ?? "—"}</span></p>
+              </div>
+            </div>
 
-      {/* ── Acelerador + Estatísticas ─────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+            <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              <CardIndicador label="Faixa verde" perc={+(d.percFaixaVerdeInicial ?? 0).toFixed(1)}
+                cor={percCor(d.percFaixaVerdeInicial, [80, 60])} />
+              <CardIndicador label="Aproveitamento de embalo" perc={+(d.percEmbalo ?? 0).toFixed(1)}
+                cor={percCor(d.percEmbalo, [20, 10])} />
+              <CardIndicador label="Motor ligado parado" perc={+(d.percMotorOcioso ?? 0).toFixed(1)}
+                cor={inversoCor(d.percMotorOcioso, [5, 15])} />
+              <CardIndicador label="Acelerando acima do verde" perc={+(d.percAcelCritico ?? 0).toFixed(1)}
+                cor={inversoCor(d.percAcelCritico, [0, 3])} />
+              <CardIndicador label="Excesso de velocidade" perc={+(d.percExcessoVelocidade ?? 0).toFixed(1)}
+                cor={inversoCor(d.percExcessoVelocidade, [0, 1])} />
+              <CardIndicador label="Faixa verde total" perc={+(((d.percFaixaVerdeInicial ?? 0) + (d.percFaixaVerdeFinal ?? 0))).toFixed(1)}
+                cor={percCor((d.percFaixaVerdeInicial ?? 0) + (d.percFaixaVerdeFinal ?? 0), [90, 70])} />
+              <CardIndicador label="Faixa verde final" perc={+(d.percFaixaVerdeFinal ?? 0).toFixed(1)}
+                cor={percCor(d.percFaixaVerdeFinal, [10, 5])} />
+              <CardIndicador label="Freio motor" perc={+(d.percFreioMotorOk ?? 0).toFixed(1)}
+                cor={percCor(d.percFreioMotorOk, [10, 3])} />
+              <CardIndicador label="Em movimento" perc={+(d.percEmbalo !== undefined ? 100 - (d.percMotorOcioso ?? 0) : 0).toFixed(1)}
+                cor={percCor(100 - (d.percMotorOcioso ?? 0), [80, 60])} />
+            </div>
+          </div>
 
-        <BarraAcelerador {...acelerador} />
+          {/* Acelerador + Estatísticas */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+            <BarraAcelerador
+              ideal={+(d.percAcelIdeal ?? 0)}
+              atencao={+(d.percAcelAtencao ?? 0)}
+              critico={+(d.percAcelCritico ?? 0)}
+            />
+            <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Stat icon="📍" label="Km total" valor={`${(+( d.kmTotal ?? 0)).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+              <Stat icon="⚡" label="Velocidade média" valor={`${+(d.velocidadeMediaKmh ?? 0).toFixed(1)} km/h`} />
+              <Stat icon="⛽" label="Consumo total" valor={`${+(d.consumoTotalLitros ?? 0).toFixed(1)} L`} />
+              <Stat icon="📊" label="Média km/L" valor={`${+(d.mediaKmL ?? 0).toFixed(2)} km/L`} />
+              <Stat icon="🔄" label="Odômetro" valor={`${(+(d.odometroFinalKm ?? 0)).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+              <Stat icon="⚠️" label="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+              <Stat icon="🛑" label="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+              <Stat icon="📉" label="Freadas / 100 km" valor={`${+(d.frenagensPor100km ?? 0).toFixed(1)}`} />
+            </div>
+          </div>
 
-        <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Stat icon="📍" label="Km total" valor={`${est.kmTotal.toLocaleString("pt-BR")} km`} />
-          <Stat icon="⚡" label="Velocidade média" valor={`${est.velocidadeMedia} km/h`} />
-          <Stat icon="⛽" label="Consumo total" valor={`${est.consumoTotal} L`} />
-          <Stat icon="📊" label="Média computador" valor={`${est.mediaKml} km/L`} />
-          <Stat icon="🔄" label="Odômetro" valor={`${est.odometro.toLocaleString("pt-BR")} km`} />
-          <Stat icon="⚠️" label="Freadas alta vel." valor={String(est.frenadasAltaVelocidade)} />
-          <Stat icon="🛑" label="Freadas totais" valor={String(est.frenadasTotais)} />
-          <Stat icon="📉" label="Freadas / 100 km" valor={String(est.frenadasPor100km)} />
-        </div>
-      </div>
-
-      {/* ── Legenda de cores ──────────────────────── */}
-      <div className="flex gap-6 text-xs text-gray-400 border-t border-gray-800 pt-4">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Bom desempenho</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" /> Atenção / médio</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Crítico</span>
-        <span className="ml-auto text-gray-600">Infobridge © 2026</span>
-      </div>
+          {/* Legenda */}
+          <div className="flex gap-6 text-xs text-gray-500 border-t border-gray-800 pt-4">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Bom</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" /> Atenção</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Crítico</span>
+            <span className="ml-auto">Infobridge © 2026</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
