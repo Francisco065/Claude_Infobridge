@@ -47,4 +47,4 @@ export const ALL_ENTITIES = [
   IndicadorPeriodo,
   PontuacaoPeriodo,
   NotaGerada,
-] as const;
+];
