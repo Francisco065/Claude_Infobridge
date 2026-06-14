@@ -1,0 +1,169 @@
+version: '3.9'
+
+# ============================================================
+#  INFOBRIDGE — Docker Compose
+#  Serviços:
+#    db             → PostgreSQL 15 + TimescaleDB
+#    redis          → Cache de tokens + Fila de jobs (BullMQ / Celery)
+#    api            → NestJS (SaaS layer: auth, multi-tenant, REST)
+#    worker_api     → FastAPI (health check + endpoints internos do worker)
+#    worker_ingestao→ Celery worker: polling dados_novos da Multiportal
+#    worker_motor   → Celery worker: cálculo de indicadores e notas
+#    beat           → Celery Beat: agendador de jobs recorrentes
+# ============================================================
+
+services:
+
+  # ─── Banco de Dados ────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: infobridge_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-infobridge}
+      POSTGRES_USER:     ${POSTGRES_USER:-infobridge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # Schema aplicado automaticamente na primeira inicialização
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-infobridge} -d ${POSTGRES_DB:-infobridge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Cache / Fila ──────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: infobridge_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── API NestJS ────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      target: production
+    container_name: infobridge_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── Worker API (FastAPI — health + endpoints internos) ────
+  worker_api:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: infobridge_worker_api
+    restart: unless-stopped
+    env_file: .env
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Celery Worker: Ingestão Multiportal ───────────────────
+  # Responsável por: polling /integracao/dados_novos e /acumulados/*
+  # Concorrência alta (I/O bound: chamadas HTTP à Multiportal)
+  worker_ingestao:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: infobridge_worker_ingestao
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      celery -A celery_app worker
+        --queues=ingestao
+        --concurrency=8
+        --loglevel=info
+        --logfile=/var/log/celery/ingestao.log
+    volumes:
+      - worker_logs:/var/log/celery
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Celery Worker: Motor de Raciocínio ────────────────────
+  # Responsável por: cálculo de indicadores, nota de desempenho,
+  #                  pontuação e geração de nota ao condutor
+  # Concorrência menor (CPU bound: pandas/numpy)
+  worker_motor:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: infobridge_worker_motor
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      celery -A celery_app worker
+        --queues=motor
+        --concurrency=2
+        --loglevel=info
+        --logfile=/var/log/celery/motor.log
+    volumes:
+      - worker_logs:/var/log/celery
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Celery Beat: Agendador ────────────────────────────────
+  # Dispara jobs recorrentes: polling dados_novos a cada 2 min,
+  # acumulados diários à meia-noite, cálculo de indicadores mensais
+  beat:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: infobridge_beat
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      celery -A celery_app beat
+        --loglevel=info
+        --logfile=/var/log/celery/beat.log
+        --schedule=/var/celery/celerybeat-schedule
+    volumes:
+      - beat_schedule:/var/celery
+      - worker_logs:/var/log/celery
+    depends_on:
+      - redis
+
+volumes:
+  db_data:
+  redis_data:
+  worker_logs:
+  beat_schedule:
