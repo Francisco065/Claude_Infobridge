@@ -6,8 +6,7 @@ import { APP_GUARD, APP_FILTER }                  from '@nestjs/core';
 
 import { TenantMiddleware }    from './common/middleware/tenant.middleware';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { JwtAuthGuard }        from './common/guards/jwt-auth.guard';
-import { RolesGuard }          from './common/guards/jwt-auth.guard';
+import { JwtAuthGuard, RolesGuard } from './common/guards/guards';
 import { ALL_ENTITIES }        from './database/entities';
 
 import { AuthModule }       from './auth/auth.module';
