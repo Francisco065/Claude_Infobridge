@@ -1,10 +1,15 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Body, Param, Query, UseGuards,
+  HttpCode, HttpStatus, ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/guards';
-import { PaginacaoDto } from '../../common/dto/paginacao.dto';
-import { TenantsService } from './tenants.service';
+import { InjectDataSource }   from '@nestjs/typeorm';
+import { DataSource }         from 'typeorm';
+import { JwtAuthGuard }       from '../../common/guards/guards';
+import { Public }             from '../../common/decorators/decorators';
+import { PaginacaoDto }       from '../../common/dto/paginacao.dto';
+import { Usuario }            from '../../database/entities/usuario.entity';
+import { TenantsService }     from './tenants.service';
 import { CriarTenantDto, AtualizarTenantDto, ConfigurarCredencialDto } from './tenants.dto';
 
 @ApiTags('Tenants (SuperAdmin)')
@@ -12,7 +17,19 @@ import { CriarTenantDto, AtualizarTenantDto, ConfigurarCredencialDto } from './t
 @UseGuards(JwtAuthGuard)
 @Controller('admin/tenants')
 export class TenantsController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    @InjectDataSource() private readonly db: DataSource,
+  ) {}
+
+  @Post('setup')
+  @Public()
+  @ApiOperation({ summary: 'Setup inicial — cria o primeiro tenant e admin (só funciona com banco vazio)' })
+  async setup(@Body() dto: CriarTenantDto) {
+    const total = await this.db.getRepository(Usuario).count();
+    if (total > 0) throw new ForbiddenException('Setup já realizado. Use as credenciais existentes.');
+    return this.tenantsService.criar(dto);
+  }
 
   @Get()
   @ApiOperation({ summary: '[SuperAdmin] Lista todos os clientes' })
