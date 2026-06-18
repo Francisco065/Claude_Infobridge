@@ -157,7 +157,7 @@ export default function InfoAnalisePage() {
       setIndicadores(res.dados ?? []);
       if (res.dados?.length) setSelecionado(res.dados[0]);
     } catch (e: any) {
-      setErro(e.message);
+      setErro(e.message ?? "Erro ao carregar indicadores");
     } finally {
       setCarregando(false);
     }
