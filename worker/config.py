@@ -9,16 +9,25 @@ class Settings(BaseSettings):
     database_url: str
 
     # Redis / Celery
+    # No Railway basta definir REDIS_URL — broker e backend usam a mesma por padrão
     redis_url: str
-    celery_broker_url: str
-    celery_result_backend: str
+    celery_broker_url: str | None = None
+    celery_result_backend: str | None = None
+
+    @property
+    def broker_url(self) -> str:
+        return self.celery_broker_url or self.redis_url
+
+    @property
+    def result_backend(self) -> str:
+        return self.celery_result_backend or self.redis_url
 
     # Multiportal
     multiportal_base_url: str = 'http://apiv1.multiportal.com.br:9870'
     multiportal_polling_interval: int = 120   # segundos
 
-    # Criptografia (AES-256 para senhas da Multiportal)
-    encryption_key: str
+    # Criptografia (AES-256 para senhas da Multiportal) — opcional por enquanto
+    encryption_key: str | None = None
 
     # Logging
     log_level: str = 'info'

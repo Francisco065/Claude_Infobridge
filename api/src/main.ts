@@ -38,6 +38,33 @@ async function seed(app: any) {
 }
 
 
+/**
+ * Cria objetos de banco que o TypeORM (synchronize) não gera:
+ * funções SQL usadas pelo worker de ingestão.
+ */
+async function aplicarFuncoesSql(app: any) {
+  const db = app.get(DataSource);
+  await db.query(`
+    CREATE OR REPLACE FUNCTION fn_motorista_em(
+      p_tenant_id  UUID,
+      p_veiculo_id UUID,
+      p_ts         TIMESTAMPTZ
+    )
+    RETURNS UUID LANGUAGE sql STABLE AS $func$
+      SELECT motorista_id
+      FROM   vinculo_motorista_veiculo
+      WHERE  tenant_id  = p_tenant_id
+        AND  veiculo_id = p_veiculo_id
+        AND  inicio    <= p_ts
+        AND  (fim IS NULL OR fim > p_ts)
+      ORDER BY inicio DESC
+      LIMIT 1;
+    $func$;
+  `);
+  console.log('✅ Função fn_motorista_em aplicada');
+}
+
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -81,6 +108,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
+  await aplicarFuncoesSql(app);
   await seed(app);
 
   const port = process.env.API_PORT ?? 3000;

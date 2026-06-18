@@ -243,8 +243,10 @@ def executar_polling_tenant(self, tenant_id: str, username: str,
 
 async def _processar_tenant(tenant_id: str, username: str,
                              password_enc: str, appid: int):
-    from cryptography.fernet import Fernet
-    password = Fernet(cfg.encryption_key.encode()).decrypt(password_enc.encode()).decode()
+    # A API NestJS guarda a senha em base64 (placeholder de criptografia).
+    # TODO: migrar ambos os lados para Fernet/AES-256 antes de produção real.
+    import base64
+    password = base64.b64decode(password_enc.encode()).decode()
 
     redis_client = aioredis.from_url(cfg.redis_url, decode_responses=False)
     client = MultiportalClient(tenant_id, username, password, appid, redis_client)
