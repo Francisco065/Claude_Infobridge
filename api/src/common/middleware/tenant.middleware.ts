@@ -36,8 +36,10 @@ export class TenantMiddleware implements NestMiddleware {
 
   async use(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers['authorization'];
+
+    // Sem token: passa adiante — JwtAuthGuard decide se a rota é pública ou não
     if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token não informado');
+      return next();
     }
 
     const token = authHeader.slice(7);
@@ -46,17 +48,14 @@ export class TenantMiddleware implements NestMiddleware {
     try {
       payload = await this.jwtService.verifyAsync(token);
     } catch {
-      throw new UnauthorizedException('Token inválido ou expirado');
+      // Token inválido: passa adiante, guard vai rejeitar
+      return next();
     }
 
-    // Expõe no objeto de request para controllers e guards
     req['userId']   = payload.sub;
     req['tenantId'] = payload.tenantId;
     req['email']    = payload.email;
 
-    // Seta o tenant na sessão PostgreSQL para o RLS funcionar
-    // Usamos SET SESSION (não LOCAL) pois queries podem ser fora de transação
-    // O pool vai resetar ao devolver a conexão (ver TenantAwareRepository)
     await this.dataSource.query(
       `SET app.current_tenant = '${payload.tenantId}'`,
     );
