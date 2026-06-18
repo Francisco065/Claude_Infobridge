@@ -28,7 +28,7 @@ import { PontuacaoModule }  from './modules/pontuacao/pontuacao.module';
         type:        'postgres',
         url:         config.get<string>('DATABASE_URL'),
         entities:    ALL_ENTITIES,
-        synchronize: false,
+        synchronize: true,  // cria tabelas automaticamente na primeira inicialização
         logging:     config.get('NODE_ENV') === 'development' ? ['query', 'error'] : ['error'],
         extra:       { max: 20, idleTimeoutMillis: 30000 },
       }),
