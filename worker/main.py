@@ -149,7 +149,57 @@ async def _polling_todos():
         await db.close()
 
 
+# ── Recálculo de indicadores do mês atual ─────────────────────
+
+async def _recalcular_mes_atual():
+    """Recalcula indicadores do mês corrente para todos os pares com telemetria."""
+    hoje = date.today()
+    inicio = hoje.replace(day=1)
+    fim = hoje
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        pares = await db.fetch(
+            """
+            SELECT DISTINCT
+                lt.tenant_id::text   AS tenant_id,
+                lt.motorista_id::text AS motorista_id,
+                lt.veiculo_id::text  AS veiculo_id
+            FROM  leitura_telemetria lt
+            WHERE lt.ts >= $1 AND lt.motorista_id IS NOT NULL
+            """,
+            datetime(inicio.year, inicio.month, inicio.day),
+        )
+    finally:
+        await db.close()
+
+    for par in pares:
+        try:
+            await _calcular_periodo(
+                par['tenant_id'], par['motorista_id'], par['veiculo_id'],
+                inicio, fim,
+            )
+        except Exception as e:
+            log.error('recalculo.par_erro', error=str(e),
+                      motorista=par['motorista_id'])
+    log.info('recalculo.concluido', pares=len(pares))
+
+
 # ── Loop principal ────────────────────────────────────────────
+
+async def _loop_recalculo():
+    """A cada CALC_INTERVAL segundos recalcula os indicadores do mês atual."""
+    interval = int(os.getenv('CALC_INTERVAL', '3600'))  # 1h por padrão
+    log.info('recalculo.iniciando', interval_s=interval)
+    while _running:
+        await asyncio.sleep(interval)
+        try:
+            await _recalcular_mes_atual()
+        except Exception as e:
+            log.error('recalculo.erro_geral', error=str(e))
+
+
+# ── Loop de polling ───────────────────────────────────────────
 
 async def _loop():
     interval = int(os.getenv('POLLING_INTERVAL', str(cfg.multiportal_polling_interval)))
@@ -166,10 +216,12 @@ async def _loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_loop())
+    t_poll = asyncio.create_task(_loop())
+    t_calc = asyncio.create_task(_loop_recalculo())
     yield
     _running = False
-    task.cancel()
+    t_poll.cancel()
+    t_calc.cancel()
 
 
 api = FastAPI(title='Infobridge Worker', lifespan=lifespan)
@@ -204,6 +256,13 @@ async def polling_manual():
     """Força um ciclo de polling imediato para todos os tenants."""
     await _polling_todos()
     return {'status': 'ok'}
+
+
+@api.post('/jobs/recalcular')
+async def recalcular_manual():
+    """Força o recálculo dos indicadores do mês atual para todos os pares."""
+    await _recalcular_mes_atual()
+    return {'status': 'ok', 'mensagem': 'Recálculo do mês atual concluído'}
 
 
 if __name__ == '__main__':
