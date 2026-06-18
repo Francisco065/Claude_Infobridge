@@ -4,13 +4,8 @@ httpx==0.27.0
 # Banco de Dados
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
-sqlalchemy[asyncio]==2.0.30
 
-# Fila de jobs
-celery[redis]==5.3.6
-redis==5.0.4
-
-# API interna (health check + endpoints de disparo manual)
+# API interna (health + disparo manual de jobs)
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 
@@ -18,15 +13,9 @@ uvicorn[standard]==0.29.0
 pandas==2.2.2
 numpy==1.26.4
 
-# Criptografia (descriptografar senhas da Multiportal)
-cryptography==42.0.5
-
 # Configuração
 pydantic-settings==2.2.1
 python-dotenv==1.0.1
 
 # Logs estruturados
 structlog==24.1.0
-
-# Geração de nota via LLM (opcional)
-anthropic==0.26.0
