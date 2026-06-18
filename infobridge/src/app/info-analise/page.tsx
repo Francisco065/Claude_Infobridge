@@ -104,8 +104,8 @@ function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void
     try {
       const { accessToken, usuario } = await apiLogin(email, senha);
       onLogin(accessToken, usuario.nome);
-    } catch {
-      setErro("E-mail ou senha inválidos.");
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao conectar com o servidor.");
     } finally {
       setCarregando(false);
     }
