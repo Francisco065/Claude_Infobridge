@@ -4,6 +4,39 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet                  from 'helmet';
 import * as compression        from 'compression';
 import { AppModule }           from './app.module';
+import { DataSource }          from 'typeorm';
+import * as bcrypt             from 'bcrypt';
+
+async function seed(app: any) {
+  const email    = process.env.SEED_ADMIN_EMAIL;
+  const senha    = process.env.SEED_ADMIN_SENHA;
+  const nomeTenant = process.env.SEED_TENANT_NOME ?? 'Infobridge Demo';
+  const nomeAdmin  = process.env.SEED_ADMIN_NOME  ?? 'Administrador';
+
+  if (!email || !senha) return;
+
+  const db = app.get(DataSource);
+
+  const jaExiste = await db.query(
+    `SELECT id FROM usuarios WHERE email = $1 LIMIT 1`, [email]
+  );
+  if (jaExiste.length > 0) return;
+
+  await db.transaction(async (manager: any) => {
+    const [tenant] = await manager.query(
+      `INSERT INTO tenants (nome, plano, ativo) VALUES ($1, 'starter', true) RETURNING id`,
+      [nomeTenant]
+    );
+    const senhaHash = await bcrypt.hash(senha, 12);
+    await manager.query(
+      `INSERT INTO usuarios (tenant_id, nome, email, senha_hash, perfil, ativo)
+       VALUES ($1, $2, $3, $4, 'admin', true)`,
+      [tenant.id, nomeAdmin, email.toLowerCase(), senhaHash]
+    );
+    console.log(`✅ Admin criado: ${email} [tenant: ${nomeTenant}]`);
+  });
+}
+
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -47,6 +80,8 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
+
+  await seed(app);
 
   const port = process.env.API_PORT ?? 3000;
   await app.listen(port);
