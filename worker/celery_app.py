@@ -6,11 +6,10 @@ cfg = get_settings()
 
 app = Celery(
     'infobridge',
-    broker=cfg.celery_broker_url,
-    backend=cfg.celery_result_backend,
+    broker=cfg.broker_url,
+    backend=cfg.result_backend,
     include=[
         'ingestao.worker_dados_novos',
-        'ingestao.worker_acumulados',
         'motor.calculador_indicadores',
         'motor.calculador_nota',
         'motor.calculador_pontuacao',
@@ -39,13 +38,6 @@ app.conf.beat_schedule = {
     'polling-dados-novos': {
         'task':     'ingestao.worker_dados_novos.executar_polling_todos_tenants',
         'schedule': cfg.multiportal_polling_interval,  # segundos
-        'options':  {'queue': 'ingestao'},
-    },
-
-    # Acumulados diários — executa às 00:30 (após virada do dia)
-    'acumulados-diarios': {
-        'task':     'ingestao.worker_acumulados.executar_acumulados_todos_tenants',
-        'schedule': crontab(hour=0, minute=30),
         'options':  {'queue': 'ingestao'},
     },
 
