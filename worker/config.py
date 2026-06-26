@@ -8,15 +8,8 @@ class Settings(BaseSettings):
     # Banco de Dados
     database_url: str
 
-    # Redis / Celery
-    # No Railway basta definir REDIS_URL — broker e backend usam a mesma por padrão
-    redis_url: str
-    celery_broker_url: str | None = None
-    celery_result_backend: str | None = None
-
-    @property
-    def broker_url(self) -> str:
-        return self.celery_broker_url or self.redis_url
+    # Redis — não usado mais (sem Celery), mantido opcional para compatibilidade
+    redis_url: str | None = None
 
     @property
     def result_backend(self) -> str:
