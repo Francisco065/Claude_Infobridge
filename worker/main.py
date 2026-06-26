@@ -300,11 +300,32 @@ async def debug():
         'leitura_com_motorista': "SELECT COUNT(*) FROM leitura_telemetria WHERE motorista_id IS NOT NULL",
         'indicador_periodo':     "SELECT COUNT(*) FROM indicador_periodo",
     }
-    resultado: dict = {}
+    # Diagnóstico de variáveis de ambiente relacionadas a banco (sem expor segredos)
+    candidatas = [
+        'DATABASE_URL', 'DATABASE_PRIVATE_URL', 'DATABASE_PUBLIC_URL', 'POSTGRES_URL',
+        'PGHOST', 'PGUSER', 'PGDATABASE', 'PGPORT',
+    ]
+    env_info = {c: ('definida' if os.getenv(c) else 'vazia') for c in candidatas}
+    dsn = cfg.database_url or ''
+    dsn_resumo = 'NENHUMA'
+    if '://' in dsn:
+        try:
+            esquema, resto = dsn.split('://', 1)
+            host = resto.split('@', 1)[1].split('/', 1)[0] if '@' in resto else resto.split('/', 1)[0]
+            dsn_resumo = f'{esquema}://…@{host}'
+        except Exception:
+            dsn_resumo = 'invalida'
+    diag = {'env': env_info, 'dsn_efetiva': dsn_resumo}
+
+    resultado: dict = {'_diagnostico': diag}
+    if '://' not in dsn:
+        resultado['erro_conexao'] = 'DATABASE_URL ausente/sem esquema — configure no serviço worker'
+        return resultado
     try:
-        db = await asyncpg.connect(cfg.database_url)
+        db = await asyncpg.connect(dsn)
     except Exception as e:
-        return {'erro_conexao': str(e)}
+        resultado['erro_conexao'] = str(e)
+        return resultado
     try:
         for chave, sql in consultas.items():
             try:

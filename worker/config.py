@@ -1,12 +1,48 @@
+import os
+from urllib.parse import quote
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 from functools import lru_cache
+
+
+def _montar_dsn_do_ambiente() -> str | None:
+    """
+    Tenta montar a string de conexão a partir das variáveis que o Railway
+    (e a maioria dos provedores) injeta. Ordem de prioridade:
+      1. DATABASE_URL / DATABASE_PRIVATE_URL / DATABASE_PUBLIC_URL / POSTGRES_URL
+      2. PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT (montagem manual)
+    Retorna None se nada utilizável for encontrado.
+    """
+    for chave in ('DATABASE_URL', 'DATABASE_PRIVATE_URL', 'DATABASE_PUBLIC_URL', 'POSTGRES_URL'):
+        valor = os.getenv(chave)
+        if valor and '://' in valor:
+            return valor
+
+    host = os.getenv('PGHOST') or os.getenv('POSTGRES_HOST')
+    user = os.getenv('PGUSER') or os.getenv('POSTGRES_USER')
+    pwd  = os.getenv('PGPASSWORD') or os.getenv('POSTGRES_PASSWORD')
+    db   = os.getenv('PGDATABASE') or os.getenv('POSTGRES_DB')
+    port = os.getenv('PGPORT') or os.getenv('POSTGRES_PORT') or '5432'
+    if host and user and db:
+        senha = f':{quote(pwd, safe="")}' if pwd else ''
+        return f'postgresql://{user}{senha}@{host}:{port}/{db}'
+
+    return None
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
-    # Banco de Dados
-    database_url: str
+    # Banco de Dados — opcional aqui; se vazio, montamos a partir do ambiente
+    database_url: str | None = None
+
+    @model_validator(mode='after')
+    def _garantir_database_url(self):
+        if not self.database_url or '://' not in self.database_url:
+            montada = _montar_dsn_do_ambiente()
+            if montada:
+                object.__setattr__(self, 'database_url', montada)
+        return self
 
     # Redis — não usado mais (sem Celery), mantido opcional para compatibilidade
     redis_url: str | None = None
