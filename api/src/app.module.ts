@@ -17,6 +17,7 @@ import { MotoristasModule } from './modules/motoristas/motoristas.module';
 import { TelemetriaModule } from './modules/telemetria/telemetria.module';
 import { IndicadoresModule } from './modules/indicadores/indicadores.module';
 import { PontuacaoModule }  from './modules/pontuacao/pontuacao.module';
+import { HealthModule }     from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { PontuacaoModule }  from './modules/pontuacao/pontuacao.module';
     TelemetriaModule,
     IndicadoresModule,
     PontuacaoModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_GUARD,  useClass: JwtAuthGuard },
