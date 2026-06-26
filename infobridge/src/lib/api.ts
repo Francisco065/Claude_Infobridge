@@ -26,6 +26,9 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  if (!res.ok) throw new Error(`Erro ${res.status}: ${path}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+  }
   return res.json() as Promise<T>;
 }
