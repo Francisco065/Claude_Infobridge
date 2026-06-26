@@ -32,3 +32,30 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export async function apiPost<T>(path: string, token: string, body: unknown): Promise<T> {
+  const res = await fetch(`${PROXY}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function apiDelete<T>(path: string, token: string): Promise<T> {
+  const res = await fetch(`${PROXY}${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+  }
+  return res.json().catch(() => ({})) as Promise<T>;
+}
