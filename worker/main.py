@@ -315,7 +315,18 @@ async def debug():
             dsn_resumo = f'{esquema}://…@{host}'
         except Exception:
             dsn_resumo = 'invalida'
-    diag = {'env': env_info, 'dsn_efetiva': dsn_resumo}
+    raw = os.getenv('DATABASE_URL') or ''
+    raw_preview = ''
+    if raw:
+        prefixo = raw[:18]
+        eh_ref = raw.strip().startswith('${')
+        raw_preview = ('REFERENCIA_NAO_RESOLVIDA ' if eh_ref else '') + prefixo + ('…' if len(raw) > 18 else '')
+    diag = {
+        'env': env_info,
+        'dsn_efetiva': dsn_resumo,
+        'database_url_tamanho': len(raw),
+        'database_url_preview': raw_preview,
+    }
 
     resultado: dict = {'_diagnostico': diag}
     if '://' not in dsn:
