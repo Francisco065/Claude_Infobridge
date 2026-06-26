@@ -1,6 +1,7 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsEnum, Length, Matches, IsEmail, MinLength,
+  IsString, IsNotEmpty, IsOptional, IsEnum, Length, Matches, IsEmail, MinLength, IsInt,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PartialType, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantPlano } from '../../database/entities/enums';
 
@@ -52,6 +53,6 @@ export class ConfigurarCredencialDto {
   @ApiProperty() @IsString() @IsNotEmpty()
   password: string;
 
-  @ApiProperty() @IsNotEmpty()
+  @ApiProperty({ type: Number }) @Type(() => Number) @IsInt()
   appid: number;
 }

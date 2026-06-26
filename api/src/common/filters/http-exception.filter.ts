@@ -23,42 +23,43 @@ import { Request, Response } from 'express';
  * Registrar globalmente no main.ts:
  *   app.useGlobalFilters(new HttpExceptionFilter());
  */
-@Catch(HttpException)
+@Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
-  catch(exception: HttpException, host: ArgumentsHost) {
+  catch(exception: unknown, host: ArgumentsHost) {
     const ctx      = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request  = ctx.getRequest<Request>();
-    const status   = exception.getStatus();
-    const body     = exception.getResponse() as any;
 
-    // Erros de validação (class-validator via ValidationPipe)
-    // vêm como { message: string[], error: 'Bad Request' }
-    const erros: string[] =
-      Array.isArray(body?.message) ? body.message : [];
+    let status   = HttpStatus.INTERNAL_SERVER_ERROR;
+    let mensagem = 'Erro interno do servidor';
+    let erros: string[] = [];
 
-    const mensagem: string =
-      typeof body?.message === 'string'
-        ? body.message
-        : typeof body === 'string'
-        ? body
-        : 'Erro interno';
+    if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      const body = exception.getResponse() as any;
+      erros    = Array.isArray(body?.message) ? body.message : [];
+      mensagem = typeof body?.message === 'string' ? body.message
+               : typeof body === 'string'          ? body
+               : mensagem;
+    } else if (exception instanceof Error) {
+      mensagem = exception.message;
+    }
 
     if (status >= 500) {
       this.logger.error(
         `${request.method} ${request.url} → ${status}: ${mensagem}`,
-        exception.stack,
+        exception instanceof Error ? exception.stack : String(exception),
       );
     }
 
     response.status(status).json({
       statusCode: status,
       mensagem,
-      erros:      erros.length ? erros : undefined,
-      timestamp:  new Date().toISOString(),
-      path:       request.url,
+      erros:     erros.length ? erros : undefined,
+      timestamp: new Date().toISOString(),
+      path:      request.url,
     });
   }
 }
