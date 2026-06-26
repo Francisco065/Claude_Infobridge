@@ -74,6 +74,31 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> int:
         if not id_multiportal:
             continue
 
+        # Garante que o veículo exista no nosso banco (sincronização automática
+        # a partir da Multiportal). Cria com os campos disponíveis; se já existir,
+        # apenas completa os dados que vierem preenchidos.
+        await db.execute(
+            """
+            INSERT INTO veiculos (
+                id, tenant_id, id_multiportal, placa, marca, modelo, frota,
+                tipo_monitoramento, tipo_dispositivo, ativo
+            ) VALUES (
+                gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, $7, 'GPS', true
+            )
+            ON CONFLICT (tenant_id, id_multiportal) DO UPDATE SET
+                placa  = COALESCE(EXCLUDED.placa,  veiculos.placa),
+                marca  = COALESCE(EXCLUDED.marca,  veiculos.marca),
+                modelo = COALESCE(EXCLUDED.modelo, veiculos.modelo),
+                frota  = COALESCE(EXCLUDED.frota,  veiculos.frota),
+                tipo_monitoramento = COALESCE(EXCLUDED.tipo_monitoramento, veiculos.tipo_monitoramento),
+                atualizado_em = NOW()
+            """,
+            tenant['tenant_id'], id_multiportal,
+            veiculo_raw.get('placa'), veiculo_raw.get('marca'),
+            veiculo_raw.get('modelo'), veiculo_raw.get('frota'),
+            veiculo_raw.get('tipoMonitoramento'),
+        )
+
         row = await db.fetchrow(
             """
             SELECT v.id::text AS veiculo_id,
