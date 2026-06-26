@@ -52,7 +52,7 @@ signal.signal(signal.SIGINT, _stop)
 
 # ── Polling de um tenant ──────────────────────────────────────
 
-async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> int:
+async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
     password = base64.b64decode(tenant['password_enc'].encode()).decode()
     client = MultiportalClientSimple(
         base_url=cfg.multiportal_base_url,
@@ -64,7 +64,7 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> int:
         veiculos = await client.dados_novos()
     except Exception as e:
         log.error('polling.multiportal_erro', tenant_id=tenant['tenant_id'], error=str(e))
-        return 0
+        return {'veiculos': 0, 'posicoes': 0, 'erro': str(e)}
     finally:
         await client.close()
 
@@ -152,10 +152,11 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> int:
                     ) for r in registros],
                 )
                 total += len(registros)
-    return total
+    return {'veiculos': len(veiculos), 'posicoes': total}
 
 
-async def _polling_todos():
+async def _polling_todos() -> dict:
+    resumo: dict = {'tenants': 0, 'detalhes': []}
     db = await asyncpg.connect(cfg.database_url)
     try:
         tenants = await db.fetch(
@@ -167,11 +168,14 @@ async def _polling_todos():
             WHERE  t.ativo = true AND ci.ativo = true
             """
         )
+        resumo['tenants'] = len(tenants)
         for t in tenants:
-            posicoes = await _polling_tenant(dict(t), db)
-            log.info('polling.ciclo', tenant_id=t['tenant_id'], posicoes=posicoes)
+            res = await _polling_tenant(dict(t), db)
+            log.info('polling.ciclo', tenant_id=t['tenant_id'], **res)
+            resumo['detalhes'].append({'tenant_id': t['tenant_id'], **res})
     finally:
         await db.close()
+    return resumo
 
 
 # ── Recálculo de indicadores do mês atual ─────────────────────
@@ -279,8 +283,30 @@ async def calcular_indicadores(req: IndicadoresRequest):
 @api.post('/jobs/polling')
 async def polling_manual():
     """Força um ciclo de polling imediato para todos os tenants."""
-    await _polling_todos()
-    return {'status': 'ok'}
+    resumo = await _polling_todos()
+    return {'status': 'ok', **resumo}
+
+
+@api.get('/debug')
+async def debug():
+    """Contagens úteis para diagnóstico (sem dados sensíveis)."""
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        async def _count(sql: str) -> int:
+            return await db.fetchval(sql)
+
+        return {
+            'tenants_ativos':       await _count("SELECT COUNT(*) FROM tenants WHERE ativo = true"),
+            'credenciais_ativas':   await _count("SELECT COUNT(*) FROM credencial_integracao WHERE ativo = true"),
+            'veiculos':             await _count("SELECT COUNT(*) FROM veiculos"),
+            'motoristas':           await _count("SELECT COUNT(*) FROM motoristas"),
+            'vinculos_ativos':      await _count("SELECT COUNT(*) FROM vinculo_motorista_veiculo WHERE fim IS NULL"),
+            'leitura_telemetria':   await _count("SELECT COUNT(*) FROM leitura_telemetria"),
+            'leitura_com_motorista':await _count("SELECT COUNT(*) FROM leitura_telemetria WHERE motorista_id IS NOT NULL"),
+            'indicador_periodo':    await _count("SELECT COUNT(*) FROM indicador_periodo"),
+        }
+    finally:
+        await db.close()
 
 
 @api.post('/jobs/recalcular')
