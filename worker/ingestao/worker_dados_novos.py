@@ -263,4 +263,3 @@ async def _processar_tenant(tenant_id: str, username: str,
     finally:
         await db.close()
         await client.close()
-        await redis_client.aclose()
