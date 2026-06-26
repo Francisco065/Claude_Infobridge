@@ -23,7 +23,7 @@ export class IndicadoresService {
       .leftJoinAndSelect('i.motorista', 'm')
       .leftJoinAndSelect('i.veiculo', 'v')
       .where('i.tenant_id = :tenantId', { tenantId })
-      .orderBy('i.periodo_inicio', 'DESC');
+      .orderBy('i.periodoInicio', 'DESC');
 
     if (filtro.motoristaId) qb.andWhere('i.motorista_id = :motoristaId', { motoristaId: filtro.motoristaId });
     if (filtro.veiculoId)   qb.andWhere('i.veiculo_id = :veiculoId', { veiculoId: filtro.veiculoId });
@@ -58,7 +58,7 @@ export class IndicadoresService {
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.veiculo', 'v')
       .where('i.tenant_id = :tenantId AND i.motorista_id = :motoristaId', { tenantId, motoristaId })
-      .orderBy('i.periodo_inicio', 'DESC');
+      .orderBy('i.periodoInicio', 'DESC');
 
     if (filtro.tipoPeriodo) qb.andWhere('i.tipo_periodo = :tp', { tp: filtro.tipoPeriodo });
     if (filtro.dataInicio)  qb.andWhere('i.periodo_inicio >= :di', { di: filtro.dataInicio });

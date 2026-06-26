@@ -18,7 +18,7 @@ export class HealthController {
   health() {
     return {
       status: 'ok',
-      build: '2026-06-26-indicadores-injectrepository',
+      build: '2026-06-26-orderby-property-fix',
       timestamp: new Date().toISOString(),
     };
   }

@@ -18,7 +18,7 @@ export class TenantsService {
 
   async listar(paginacao: PaginacaoDto): Promise<RespostaPaginadaDto<Tenant>> {
     const repo = this.db.getRepository(Tenant);
-    const qb   = repo.createQueryBuilder('t').orderBy('t.criado_em', 'DESC');
+    const qb   = repo.createQueryBuilder('t').orderBy('t.criadoEm', 'DESC');
 
     if (paginacao.busca) {
       qb.where('t.nome ILIKE :busca OR t.cnpj LIKE :cnpj', {
