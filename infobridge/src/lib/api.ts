@@ -3,6 +3,35 @@
 
 const PROXY = "/api/backend";
 
+// ── Persistência da sessão (token) ────────────────────────────
+const AUTH_KEY = "infobridge_auth";
+
+export type SessaoSalva = { token: string; nome: string };
+
+export function salvarSessao(token: string, nome: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AUTH_KEY, JSON.stringify({ token, nome }));
+  } catch { /* ignora storage indisponível */ }
+}
+
+export function carregarSessao(): SessaoSalva | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_KEY);
+    return raw ? (JSON.parse(raw) as SessaoSalva) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function limparSessao() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(AUTH_KEY);
+  } catch { /* ignora */ }
+}
+
 export async function apiLogin(email: string, senha: string) {
   const res = await fetch(`${PROXY}/auth/login`, {
     method: "POST",

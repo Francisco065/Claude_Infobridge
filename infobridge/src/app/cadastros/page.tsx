@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { apiLogin, apiFetch, apiPost } from "@/lib/api";
+import { useState, useEffect, useCallback } from "react";
+import { apiLogin, apiFetch, apiPost, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
 
 type Motorista = {
   id: string;
@@ -91,6 +91,11 @@ export default function CadastrosPage() {
   const [veiculoSel, setVeiculoSel] = useState("");
   const [salvandoVinc, setSalvandoVinc] = useState(false);
 
+  const sair = useCallback(() => {
+    limparSessao();
+    setToken(null);
+  }, []);
+
   const carregar = useCallback(async (tk: string) => {
     setCarregando(true); setErro("");
     try {
@@ -101,13 +106,27 @@ export default function CadastrosPage() {
       setMotoristas(m.dados ?? []);
       setVeiculos(v.dados ?? []);
     } catch (e: any) {
-      setErro(e?.message ?? "Erro ao carregar cadastros");
+      const msg = e?.message ?? "Erro ao carregar cadastros";
+      // Sessão expirada/inválida: volta para o login
+      if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
+      else setErro(msg);
     } finally {
       setCarregando(false);
     }
   }, []);
 
+  // Restaura a sessão salva ao abrir/atualizar a página
+  useEffect(() => {
+    const sessao = carregarSessao();
+    if (sessao?.token) {
+      setToken(sessao.token);
+      setNomeUsuario(sessao.nome);
+      carregar(sessao.token);
+    }
+  }, [carregar]);
+
   function handleLogin(tk: string, nome: string) {
+    salvarSessao(tk, nome);
     setToken(tk); setNomeUsuario(nome);
     carregar(tk);
   }
@@ -164,7 +183,7 @@ export default function CadastrosPage() {
         <div className="flex items-center gap-4">
           <a href="/info-analise" className="text-xs text-emerald-400 hover:text-emerald-300">📊 Info Analise</a>
           <span className="text-xs text-gray-400">👤 {nomeUsuario}</span>
-          <button onClick={() => setToken(null)}
+          <button onClick={sair}
             className="text-xs text-gray-500 hover:text-red-400 transition-colors">Sair</button>
         </div>
       </div>

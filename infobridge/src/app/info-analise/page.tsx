@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiLogin, apiFetch } from "@/lib/api";
+import { apiLogin, apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
 
 // ── Helpers de cor ────────────────────────────────────────────
 function percCor(valor: number, thresholds: [number, number]) {
@@ -157,13 +157,27 @@ export default function InfoAnalisePage() {
       setIndicadores(res.dados ?? []);
       if (res.dados?.length) setSelecionado(res.dados[0]);
     } catch (e: any) {
-      setErro(e.message ?? "Erro ao carregar indicadores");
+      const msg = e.message ?? "Erro ao carregar indicadores";
+      // Sessão expirada/inválida: volta para o login
+      if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
+      else setErro(msg);
     } finally {
       setCarregando(false);
     }
   }, []);
 
+  // Restaura a sessão salva ao abrir/atualizar a página
+  useEffect(() => {
+    const sessao = carregarSessao();
+    if (sessao?.token) {
+      setToken(sessao.token);
+      setNomeUsuario(sessao.nome);
+      buscarIndicadores(sessao.token);
+    }
+  }, [buscarIndicadores]);
+
   function handleLogin(tk: string, nome: string) {
+    salvarSessao(tk, nome);
     setToken(tk); setNomeUsuario(nome);
     buscarIndicadores(tk);
   }
@@ -186,7 +200,7 @@ export default function InfoAnalisePage() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-400">👤 {nomeUsuario}</span>
-          <button onClick={() => setToken(null)}
+          <button onClick={() => { limparSessao(); setToken(null); }}
             className="text-xs text-gray-500 hover:text-red-400 transition-colors">Sair</button>
         </div>
       </div>
