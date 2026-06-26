@@ -287,6 +287,40 @@ async def polling_manual():
     return {'status': 'ok', **resumo}
 
 
+@api.post('/jobs/vincular-telemetria')
+async def vincular_telemetria():
+    """
+    Backfill: atribui o motorista vinculado (vínculo ativo) às leituras de
+    telemetria que estão sem motorista. Útil logo após criar os vínculos,
+    para que a telemetria já coletada possa gerar indicadores.
+    Usa o vínculo ativo (fim IS NULL) mais recente de cada veículo.
+    """
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        resultado = await db.execute(
+            """
+            UPDATE leitura_telemetria lt
+            SET    motorista_id = v.motorista_id
+            FROM (
+                SELECT DISTINCT ON (veiculo_id)
+                       tenant_id, veiculo_id, motorista_id
+                FROM   vinculo_motorista_veiculo
+                WHERE  fim IS NULL
+                ORDER BY veiculo_id, inicio DESC
+            ) v
+            WHERE lt.veiculo_id   = v.veiculo_id
+              AND lt.tenant_id    = v.tenant_id
+              AND lt.motorista_id IS NULL
+            """
+        )
+        # resultado vem como 'UPDATE N'
+        atualizadas = int(resultado.split()[-1]) if resultado else 0
+        log.info('backfill.telemetria', atualizadas=atualizadas)
+        return {'status': 'ok', 'leituras_atualizadas': atualizadas}
+    finally:
+        await db.close()
+
+
 @api.get('/debug')
 async def debug():
     """Contagens úteis para diagnóstico (sem dados sensíveis)."""
