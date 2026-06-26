@@ -290,23 +290,30 @@ async def polling_manual():
 @api.get('/debug')
 async def debug():
     """Contagens úteis para diagnóstico (sem dados sensíveis)."""
-    db = await asyncpg.connect(cfg.database_url)
+    consultas = {
+        'tenants_ativos':        "SELECT COUNT(*) FROM tenants WHERE ativo = true",
+        'credenciais_ativas':    "SELECT COUNT(*) FROM credencial_integracao WHERE ativo = true",
+        'veiculos':              "SELECT COUNT(*) FROM veiculos",
+        'motoristas':            "SELECT COUNT(*) FROM motoristas",
+        'vinculos_ativos':       "SELECT COUNT(*) FROM vinculo_motorista_veiculo WHERE fim IS NULL",
+        'leitura_telemetria':    "SELECT COUNT(*) FROM leitura_telemetria",
+        'leitura_com_motorista': "SELECT COUNT(*) FROM leitura_telemetria WHERE motorista_id IS NOT NULL",
+        'indicador_periodo':     "SELECT COUNT(*) FROM indicador_periodo",
+    }
+    resultado: dict = {}
     try:
-        async def _count(sql: str) -> int:
-            return await db.fetchval(sql)
-
-        return {
-            'tenants_ativos':       await _count("SELECT COUNT(*) FROM tenants WHERE ativo = true"),
-            'credenciais_ativas':   await _count("SELECT COUNT(*) FROM credencial_integracao WHERE ativo = true"),
-            'veiculos':             await _count("SELECT COUNT(*) FROM veiculos"),
-            'motoristas':           await _count("SELECT COUNT(*) FROM motoristas"),
-            'vinculos_ativos':      await _count("SELECT COUNT(*) FROM vinculo_motorista_veiculo WHERE fim IS NULL"),
-            'leitura_telemetria':   await _count("SELECT COUNT(*) FROM leitura_telemetria"),
-            'leitura_com_motorista':await _count("SELECT COUNT(*) FROM leitura_telemetria WHERE motorista_id IS NOT NULL"),
-            'indicador_periodo':    await _count("SELECT COUNT(*) FROM indicador_periodo"),
-        }
+        db = await asyncpg.connect(cfg.database_url)
+    except Exception as e:
+        return {'erro_conexao': str(e)}
+    try:
+        for chave, sql in consultas.items():
+            try:
+                resultado[chave] = await db.fetchval(sql)
+            except Exception as e:
+                resultado[chave] = f'ERRO: {e}'
     finally:
         await db.close()
+    return resultado
 
 
 @api.post('/jobs/recalcular')
