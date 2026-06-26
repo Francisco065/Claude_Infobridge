@@ -32,43 +32,12 @@ import numpy as np
 import pandas as pd
 import structlog
 
-from celery_app import app as celery_app
 from config     import get_settings
 from motor.classificador import Classificador
 
 log = structlog.get_logger(__name__)
 cfg = get_settings()
 clf = Classificador(cfg)
-
-
-# ── Celery Tasks ──────────────────────────────────────────────
-
-@celery_app.task(name='motor.calculador_indicadores.calcular_indicadores_mensais_todos')
-def calcular_indicadores_mensais_todos():
-    asyncio.run(_calcular_mensais_todos())
-
-
-@celery_app.task(
-    name='motor.calculador_indicadores.calcular_indicadores_periodo',
-    bind=True, max_retries=2,
-)
-def calcular_indicadores_periodo_task(
-    self,
-    tenant_id: str,
-    motorista_id: str,
-    veiculo_id: str,
-    periodo_inicio: str,   # ISO date: 'yyyy-MM-dd'
-    periodo_fim: str,
-):
-    try:
-        asyncio.run(_calcular_periodo(
-            tenant_id, motorista_id, veiculo_id,
-            date.fromisoformat(periodo_inicio),
-            date.fromisoformat(periodo_fim),
-        ))
-    except Exception as exc:
-        log.error('motor.indicadores.erro', tenant_id=tenant_id, error=str(exc))
-        raise self.retry(exc=exc)
 
 
 # ── Lógica principal ──────────────────────────────────────────

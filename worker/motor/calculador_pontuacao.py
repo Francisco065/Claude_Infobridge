@@ -19,37 +19,10 @@ from datetime import date
 import asyncpg
 import structlog
 
-from celery_app import app as celery_app
 from config     import get_settings
 
 log = structlog.get_logger(__name__)
 cfg = get_settings()
-
-
-@celery_app.task(name='motor.calculador_pontuacao.calcular_pontuacao_mensal_todos')
-def calcular_pontuacao_mensal_todos():
-    asyncio.run(_calcular_pontuacao_todos())
-
-
-@celery_app.task(
-    name='motor.calculador_pontuacao.calcular_pontuacao_tenant',
-    bind=True, max_retries=2,
-)
-def calcular_pontuacao_tenant(
-    self,
-    tenant_id: str,
-    periodo_inicio: str,
-    periodo_fim: str,
-):
-    try:
-        asyncio.run(_calcular_pontuacao_tenant(
-            tenant_id,
-            date.fromisoformat(periodo_inicio),
-            date.fromisoformat(periodo_fim),
-        ))
-    except Exception as exc:
-        log.error('motor.pontuacao.erro', tenant_id=tenant_id, error=str(exc))
-        raise self.retry(exc=exc)
 
 
 async def _calcular_pontuacao_todos():

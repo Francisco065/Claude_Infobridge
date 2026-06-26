@@ -17,12 +17,9 @@ import asyncio
 from typing import Any
 
 import asyncpg
-import redis.asyncio as aioredis
 import structlog
 
-from celery_app import app as celery_app
 from config    import get_settings
-from ingestao.multiportal_client import MultiportalClient
 from motor.classificador import Classificador
 
 log = structlog.get_logger(__name__)
@@ -184,72 +181,12 @@ def processar_posicao(
     }
 
 
-# ── Celery Tasks ──────────────────────────────────────────────
-
-@celery_app.task(name='ingestao.worker_dados_novos.executar_polling_todos_tenants')
-def executar_polling_todos_tenants():
-    """
-    Disparada pelo Celery Beat a cada N segundos.
-    Busca todos os tenants ativos e dispara uma task por tenant.
-    """
-    asyncio.run(_polling_todos_tenants())
-
-
-async def _polling_todos_tenants():
-    conn = await asyncpg.connect(cfg.database_url)
-    try:
-        tenants = await conn.fetch(
-            """
-            SELECT t.id::text AS tenant_id,
-                   ci.username,
-                   ci.password_enc,
-                   ci.appid
-            FROM   tenants t
-            JOIN   credencial_integracao ci ON ci.tenant_id = t.id
-            WHERE  t.ativo = true AND ci.ativo = true
-            """
-        )
-    finally:
-        await conn.close()
-
-    for tenant in tenants:
-        executar_polling_tenant.delay(
-            tenant_id=tenant['tenant_id'],
-            username=tenant['username'],
-            password_enc=tenant['password_enc'],
-            appid=tenant['appid'],
-        )
-        log.info('polling.agendado', tenant_id=tenant['tenant_id'])
-
-
-@celery_app.task(
-    name='ingestao.worker_dados_novos.executar_polling_tenant',
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-)
-def executar_polling_tenant(self, tenant_id: str, username: str,
-                             password_enc: str, appid: int):
-    """
-    Faz o polling de /integracao/dados_novos para um tenant específico.
-    Persiste as posições novas em leitura_telemetria.
-    """
-    try:
-        asyncio.run(_processar_tenant(tenant_id, username, password_enc, appid))
-    except Exception as exc:
-        log.error('polling.erro', tenant_id=tenant_id, error=str(exc))
-        raise self.retry(exc=exc)
-
-
 async def _processar_tenant(tenant_id: str, username: str,
                              password_enc: str, appid: int):
-    # A API NestJS guarda a senha em base64 (placeholder de criptografia).
-    # TODO: migrar ambos os lados para Fernet/AES-256 antes de produção real.
     import base64
+    from ingestao.multiportal_client_simple import MultiportalClientSimple
     password = base64.b64decode(password_enc.encode()).decode()
-
-    redis_client = aioredis.from_url(cfg.redis_url, decode_responses=False)
-    client = MultiportalClient(tenant_id, username, password, appid, redis_client)
+    client = MultiportalClientSimple(cfg.multiportal_base_url, username, password, appid)
 
     db = await asyncpg.connect(cfg.database_url)
     try:

@@ -23,36 +23,10 @@ from typing import Any
 import asyncpg
 import structlog
 
-from celery_app import app as celery_app
 from config     import get_settings
 
 log = structlog.get_logger(__name__)
 cfg = get_settings()
-
-
-# ── Celery Task ───────────────────────────────────────────────
-
-@celery_app.task(
-    name='motor.calculador_nota.calcular_nota_desempenho_task',
-    bind=True, max_retries=2,
-)
-def calcular_nota_desempenho_task(
-    self,
-    tenant_id: str,
-    motorista_id: str,
-    veiculo_id: str,
-    periodo_inicio: str,
-    periodo_fim: str,
-):
-    try:
-        asyncio.run(_calcular_e_salvar(
-            tenant_id, motorista_id, veiculo_id,
-            date.fromisoformat(periodo_inicio),
-            date.fromisoformat(periodo_fim),
-        ))
-    except Exception as exc:
-        log.error('motor.nota.erro', error=str(exc))
-        raise self.retry(exc=exc)
 
 
 # ── Cálculo da Nota ───────────────────────────────────────────
