@@ -1,17 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectDataSource }              from '@nestjs/typeorm';
-import { DataSource }                    from 'typeorm';
+import { InjectRepository }              from '@nestjs/typeorm';
+import { Repository }                    from 'typeorm';
 import { IndicadorPeriodo }              from '../../database/entities/indicador-periodo.entity';
 import { RespostaPaginadaDto }           from '../../common/dto/paginacao.dto';
 import { FiltroIndicadorDto, RankingFiltroDto } from './indicadores.dto';
 
 @Injectable()
 export class IndicadoresService {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
+  constructor(
+    @InjectRepository(IndicadorPeriodo)
+    private readonly repo: Repository<IndicadorPeriodo>,
+  ) {}
 
-  private get repo() {
-    return this.db.getRepository(IndicadorPeriodo);
-  }
 
   // ── Listar com filtros ────────────────────────────────────
 
