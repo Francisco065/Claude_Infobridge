@@ -68,7 +68,7 @@ function ChipInfo({ icone, rotulo, valor }: { icone: string; rotulo: string; val
       boxShadow: "0 1px 3px rgba(30,32,40,.04)",
     }}>
       <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 16, color: VINHO }} />
-      <span style={{ color: "#8A8D96" }}>{rotulo}</span>
+      <span style={{ color: "#6B6E76" }}>{rotulo}</span>
       <span style={{ color: "#33363D", fontWeight: 700 }}>{valor}</span>
     </span>
   );
