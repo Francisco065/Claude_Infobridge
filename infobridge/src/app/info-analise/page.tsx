@@ -13,6 +13,37 @@ const TINT = { verde: "#F0FAF3", amarelo: "#FEF7EC", vermelho: "#FDF1F1" };
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
 const SANS = "'IBM Plex Sans', system-ui, sans-serif";
 
+// ── Status semântico (item 1 + 2) ─────────────────────────────
+// Cada métrica declara sua POLARIDADE:
+//   "maior" → quanto maior, melhor (faixa verde, freio motor, ...)
+//   "menor" → quanto menor, melhor (excesso de velocidade, motor parado, ...)
+//   "fixo"  → card constante/positivo (Em movimento)
+// Além da cor, todo status carrega um ÍCONE DE FORMA e um RÓTULO de texto,
+// para que o estado seja legível por daltônicos e em tons de cinza.
+type Polaridade = "maior" | "menor" | "fixo";
+type Status = { cor: string; tint: string; icon: string; label: string };
+
+const ST_BOM: Status = { cor: VERDE, tint: TINT.verde, icon: "ti-circle-check-filled", label: "Bom" };
+const ST_ATENCAO: Status = { cor: AMARELO, tint: TINT.amarelo, icon: "ti-alert-triangle-filled", label: "Atenção" };
+const ST_CRITICO: Status = { cor: VERMELHO, tint: TINT.vermelho, icon: "ti-alert-octagon-filled", label: "Crítico" };
+
+// Cortes iniciais — ponto único de calibração com o time de operação.
+const CORTE_MAIOR = { bom: 70, atencao: 40 }; // ≥bom = verde · ≥atencao = amarelo · resto = vermelho
+const CORTE_MENOR = { bom: 15, atencao: 35 }; // ≤bom = verde · ≤atencao = amarelo · resto = vermelho
+
+function statusDe(pct: number, pol: Polaridade): Status {
+  if (pol === "fixo") return ST_BOM;
+  if (pol === "menor") {
+    if (pct <= CORTE_MENOR.bom) return ST_BOM;
+    if (pct <= CORTE_MENOR.atencao) return ST_ATENCAO;
+    return ST_CRITICO;
+  }
+  // "maior"
+  if (pct >= CORTE_MAIOR.bom) return ST_BOM;
+  if (pct >= CORTE_MAIOR.atencao) return ST_ATENCAO;
+  return ST_CRITICO;
+}
+
 // ── Conversão segura para número ──────────────────────────────
 function num(v: any): number {
   const n = Number(v);
@@ -33,53 +64,28 @@ function ChipInfo({ icone, rotulo, valor }: { icone: string; rotulo: string; val
       border: "1px solid #E7E9ED", borderRadius: 999, padding: "8px 14px", fontSize: 13,
       boxShadow: "0 1px 3px rgba(30,32,40,.04)",
     }}>
-      <i className={`ti ${icone}`} aria-hidden="true" style={{ fontSize: 16, color: VINHO }} />
-      <span style={{ color: "#6B6E76" }}>{rotulo}</span>
+      <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 16, color: VINHO }} />
+      <span style={{ color: "#8A8D96" }}>{rotulo}</span>
       <span style={{ color: "#33363D", fontWeight: 700 }}>{valor}</span>
     </span>
   );
 }
 
-// ── Status por polaridade da métrica ─────────────────────────
-// Algumas métricas são "quanto maior melhor" (faixa verde, embalo…) e
-// outras "quanto menor melhor" (excesso de velocidade, motor ocioso…).
-type Polaridade = "maior" | "menor" | "fixo";
-
-const CORTE_MAIOR = { bom: 70, atencao: 40 }; // bom se >= 70, atenção se >= 40
-const CORTE_MENOR = { bom: 15, atencao: 35 }; // bom se <= 15, atenção se <= 35
-
-type Status = { cor: string; tint: string; label: string; icone: string };
-
-const STATUS_BOM: Status = { cor: VERDE, tint: TINT.verde, label: "Bom", icone: "ti-circle-check-filled" };
-const STATUS_ATN: Status = { cor: AMARELO, tint: TINT.amarelo, label: "Atenção", icone: "ti-alert-triangle-filled" };
-const STATUS_CRT: Status = { cor: VERMELHO, tint: TINT.vermelho, label: "Crítico", icone: "ti-octagon-filled" };
-
-function statusDe(pct: number, pol: Polaridade): Status {
-  if (pol === "fixo") return STATUS_BOM;
-  if (pol === "maior") {
-    if (pct >= CORTE_MAIOR.bom) return STATUS_BOM;
-    if (pct >= CORTE_MAIOR.atencao) return STATUS_ATN;
-    return STATUS_CRT;
-  }
-  // menor é melhor
-  if (pct <= CORTE_MENOR.bom) return STATUS_BOM;
-  if (pct <= CORTE_MENOR.atencao) return STATUS_ATN;
-  return STATUS_CRT;
-}
-
-// Nota geral é sempre "quanto maior melhor"
-function corNota(nota: number): string {
-  return statusDe(nota, "maior").cor;
+// Cor semântica "quanto maior, melhor" — usada pela nota geral (que é sempre maior-melhor)
+function corPorValor(pct: number): string {
+  if (pct >= CORTE_MAIOR.bom) return VERDE;
+  if (pct >= CORTE_MAIOR.atencao) return AMARELO;
+  return VERMELHO;
 }
 
 // ── Medidor circular de nota ──────────────────────────────────
 function Gauge({ nota }: { nota: number }) {
-  const cor = corNota(nota);
-  const label = nota >= 70 ? "Ótimo" : nota >= 40 ? "Regular" : "Crítico";
+  const cor = corPorValor(nota);
+  const label = nota >= CORTE_MAIOR.bom ? "Ótimo" : nota >= CORTE_MAIOR.atencao ? "Regular" : "Crítico";
   const r = 54, c = 2 * Math.PI * r;
   return (
-    <svg width="150" height="150" viewBox="0 0 150 150"
-      role="img" aria-label={`Nota de desempenho: ${nota} de 100 — ${label}`}>
+    <svg width="150" height="150" viewBox="0 0 150 150" role="img"
+      aria-label={`Nota de desempenho: ${nota} de 100 — ${label}`}>
       <circle cx="75" cy="75" r={r} fill="none" stroke="#EDEFF2" strokeWidth="12" />
       <circle cx="75" cy="75" r={r} fill="none" stroke={cor} strokeWidth="12"
         strokeDasharray={`${(nota / 100) * c} ${c}`} strokeLinecap="round"
@@ -105,10 +111,10 @@ function Segmentos({ pct, cor }: { pct: number; cor: string }) {
 }
 
 // ── Cartão de comportamento ───────────────────────────────────
-// A cor/estado vem da polaridade (statusDe). A barra segmentada mantém a
-// regra de MAGNITUDE (preenche conforme o % bruto), independente do estado.
-function CardComportamento({ nome, pct, pol }: {
-  nome: string; pct: number; pol: Polaridade;
+// `pol` define a polaridade da métrica (item 1). O status traz cor + ícone de
+// forma + rótulo (item 2), garantindo leitura sem depender só da cor.
+function CardComportamento({ nome, pct, pol = "maior" }: {
+  nome: string; pct: number; pol?: Polaridade;
 }) {
   const valor = pol === "fixo" ? 100 : pct;
   const st = statusDe(valor, pol);
@@ -117,20 +123,20 @@ function CardComportamento({ nome, pct, pol }: {
       background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13,
       padding: "14px 15px", boxShadow: `inset 3px 0 0 0 ${st.cor}, 0 1px 3px rgba(30,32,40,.04)`,
     }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 600, color: st.cor, fontFeatureSettings: "'tnum'" }}>
-          {valor.toFixed(pol === "fixo" ? 0 : 1)} %
+          {valor.toFixed(pol === "fixo" ? 0 : 1)}%
         </span>
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: 4, background: st.tint, color: st.cor,
-          borderRadius: 999, padding: "3px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap",
-        }}>
-          <i className={`ti ${st.icone}`} aria-hidden="true" style={{ fontSize: 13 }} />
-          {st.label}
-        </span>
+        <i className={`ti ${st.icon}`} aria-hidden style={{ fontSize: 18, color: st.cor }} />
       </div>
       <Segmentos pct={valor} cor={st.cor} />
-      <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>{nome}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500, lineHeight: 1.25 }}>{nome}</span>
+        <span style={{
+          flexShrink: 0, display: "inline-flex", alignItems: "center", background: st.tint,
+          color: st.cor, fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
+        }}>{st.label}</span>
+      </div>
     </div>
   );
 }
@@ -163,7 +169,7 @@ function CardStat({ icone, valor, rotulo, chipBg, chipCor }: {
         flex: "0 0 36px", width: 36, height: 36, borderRadius: 10, display: "flex",
         alignItems: "center", justifyContent: "center", background: chipBg ?? "#F4EDED",
       }}>
-        <i className={`ti ${icone}`} aria-hidden="true" style={{ fontSize: 18, color: chipCor ?? VINHO }} />
+        <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 18, color: chipCor ?? VINHO }} />
       </span>
       <div style={{ minWidth: 0 }}>
         <p style={{ fontFamily: MONO, fontSize: 16, fontWeight: 600, color: "#1F2024", fontFeatureSettings: "'tnum'", margin: 0 }}>{valor}</p>
@@ -180,7 +186,7 @@ function TituloSecao({ children, icone }: { children: React.ReactNode; icone?: s
       fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase",
       color: "#6B6E76", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 7,
     }}>
-      {icone && <i className={`ti ${icone}`} aria-hidden="true" style={{ fontSize: 15, color: VINHO }} />}
+      {icone && <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 15, color: VINHO }} />}
       {children}
     </h2>
   );
@@ -256,12 +262,12 @@ function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void
         </div>
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
-            <label htmlFor="login-email" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>E-mail</label>
-            <input id="login-email" style={input} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            <label htmlFor="ib-email" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>E-mail</label>
+            <input id="ib-email" style={input} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
           </div>
           <div>
-            <label htmlFor="login-senha" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>Senha</label>
-            <input id="login-senha" style={input} type="password" autoComplete="current-password" value={senha} onChange={e => setSenha(e.target.value)} required />
+            <label htmlFor="ib-senha" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>Senha</label>
+            <input id="ib-senha" style={input} type="password" autoComplete="current-password" value={senha} onChange={e => setSenha(e.target.value)} required />
           </div>
           {erro && <p role="alert" aria-live="assertive" style={{ color: VERMELHO, fontSize: 12, margin: 0 }}>{erro}</p>}
           <button style={{ width: "100%", background: VINHO, color: "#fff", borderRadius: 10, padding: "11px", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer", opacity: carregando ? 0.6 : 1 }}
@@ -373,12 +379,12 @@ export default function InfoAnalisePage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 17, color: VINHO }} />
+              <i className="ti ti-user" aria-hidden style={{ fontSize: 17, color: VINHO }} />
             </span>
             <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
             <button onClick={() => { limparSessao(); setToken(null); }}
               style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
-              <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: 15 }} /> Sair
+              <i className="ti ti-logout" aria-hidden style={{ fontSize: 15 }} /> Sair
             </button>
           </div>
         </div>
@@ -386,9 +392,9 @@ export default function InfoAnalisePage() {
         {/* Faixa de filtros: seletor à esquerda, chips de identificação à direita */}
         <div className="ib-filtros" style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <label htmlFor="filtro-periodo" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
+            <label htmlFor="ib-periodo" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
             <select
-              id="filtro-periodo"
+              id="ib-periodo"
               value={selecionado ? indicadores.indexOf(selecionado) : 0}
               onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
               className="ib-select"
@@ -415,7 +421,7 @@ export default function InfoAnalisePage() {
         {/* Conteúdo */}
         <div style={{ background: "#F6F7F9", padding: 24 }}>
           {carregando && <div style={{ textAlign: "center", padding: 80, color: "#6B6E76" }}>Carregando dados...</div>}
-          {erro && <div style={{ background: TINT.vermelho, border: `1px solid ${VERMELHO}33`, borderRadius: 12, padding: 16, color: VERMELHO, fontSize: 14, marginBottom: 20 }}>{erro}</div>}
+          {erro && <div role="alert" style={{ background: TINT.vermelho, border: `1px solid ${VERMELHO}33`, borderRadius: 12, padding: 16, color: VERMELHO, fontSize: 14, marginBottom: 20 }}>{erro}</div>}
 
           {!carregando && !d && !erro && (
             <div style={{ textAlign: "center", padding: 80, color: "#6B6E76" }}>
@@ -478,26 +484,28 @@ export default function InfoAnalisePage() {
                   <TituloSecao>Pressão do Acelerador</TituloSecao>
                   <button
                     type="button"
-                    aria-label="Legenda de cores dos indicadores"
+                    aria-label="Legenda de cores: verde bom, amarelo atenção, vermelho crítico"
                     aria-expanded={tooltipAcel}
-                    style={{ cursor: "pointer", position: "relative", marginTop: -8, background: "none", border: "none", padding: 2, lineHeight: 0, color: "#B4B7BE" }}
+                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", position: "relative", marginTop: -8, color: "#B4B7BE", lineHeight: 1 }}
                     onMouseEnter={() => setTooltipAcel(true)}
                     onMouseLeave={() => setTooltipAcel(false)}
                     onFocus={() => setTooltipAcel(true)}
                     onBlur={() => setTooltipAcel(false)}
                     onClick={() => setTooltipAcel(v => !v)}
-                    onKeyDown={e => { if (e.key === "Escape") setTooltipAcel(false); }}
+                    onKeyDown={(e) => { if (e.key === "Escape") setTooltipAcel(false); }}
                   >
-                    <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 16, color: "#B4B7BE" }} />
+                    <i className="ti ti-info-circle" aria-hidden style={{ fontSize: 16 }} />
                     {tooltipAcel && (
                       <div role="tooltip" style={{
                         position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
-                        borderRadius: 10, padding: "10px 12px", fontSize: 12, width: 184, lineHeight: 1.9, textAlign: "left",
-                        boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease",
+                        borderRadius: 10, padding: "11px 12px", fontSize: 12, width: 178, lineHeight: 1.5,
+                        boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease", textAlign: "left",
                       }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i className="ti ti-circle-check-filled" aria-hidden="true" style={{ color: VERDE }} /> Bom</span>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i className="ti ti-alert-triangle-filled" aria-hidden="true" style={{ color: AMARELO }} /> Atenção</span>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}><i className="ti ti-octagon-filled" aria-hidden="true" style={{ color: VERMELHO }} /> Crítico</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-circle-check-filled" aria-hidden style={{ fontSize: 14, color: VERDE }} />Verde — Bom</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-triangle-filled" aria-hidden style={{ fontSize: 14, color: AMARELO }} />Amarelo — Atenção</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-octagon-filled" aria-hidden style={{ fontSize: 14, color: VERMELHO }} />Vermelho — Crítico</span>
+                        </div>
                       </div>
                     )}
                   </button>
