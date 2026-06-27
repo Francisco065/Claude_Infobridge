@@ -297,6 +297,9 @@ export default function InfoAnalisePage() {
 
         /* Layout responsivo */
         .ib-page { padding: 30px; }
+        .ib-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+        .ib-main { display: flex; flex-direction: column; gap: 18px; }
+        .ib-side { display: flex; flex-direction: column; gap: 18px; }
         .ib-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px; margin-bottom: 18px; align-items: start; }
         .ib-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
         .ib-cards4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
@@ -304,6 +307,7 @@ export default function InfoAnalisePage() {
 
         /* Tablet / telas médias */
         @media (max-width: 900px) {
+          .ib-layout { grid-template-columns: 1fr; }
           .ib-split { grid-template-columns: 1fr; }
           .ib-cards4 { grid-template-columns: repeat(2, 1fr); }
         }
@@ -385,8 +389,52 @@ export default function InfoAnalisePage() {
           )}
 
           {d && (
-            <>
-              <div className="ib-split">
+            <div className="ib-layout">
+              {/* Coluna principal (esquerda): cartões */}
+              <div className="ib-main">
+                {/* Comportamento de condução — 3×3 */}
+                <div>
+                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
+                  <div className="ib-cards3">
+                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
+                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
+                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
+                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} icone="ti-trending-up" />
+                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} icone="ti-brand-speedtest" />
+                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} icone="ti-disc" />
+                    <CardComportamento nome="Em movimento" pct={100} forcarVerde icone="ti-circle-check-filled" />
+                  </div>
+                </div>
+
+                {/* Dados da viagem */}
+                <div>
+                  <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
+                  <div className="ib-cards4">
+                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                    <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+                    <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+                    <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
+                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+                  </div>
+                </div>
+
+                {/* Rodagem & Frenagem */}
+                <div>
+                  <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
+                  <div className="ib-cards4">
+                    <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
+                      rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+                    <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
+                      rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+                    <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Coluna lateral (direita): Nota + Pressão do Acelerador */}
+              <div className="ib-side">
                 {/* Nota + dados do veículo */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
                   <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
@@ -406,25 +454,6 @@ export default function InfoAnalisePage() {
                   </div>
                 </div>
 
-                {/* Comportamento de condução — 3×3 */}
-                <div>
-                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
-                  <div className="ib-cards3">
-                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
-                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
-                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
-                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} icone="ti-trending-up" />
-                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} icone="ti-brand-speedtest" />
-                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
-                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
-                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} icone="ti-disc" />
-                    <CardComportamento nome="Em movimento" pct={100} forcarVerde icone="ti-circle-check-filled" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Acelerador + Dados da viagem */}
-              <div className="ib-split">
                 {/* Pressão do acelerador */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
@@ -453,32 +482,8 @@ export default function InfoAnalisePage() {
                     <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
                   </div>
                 </div>
-
-                {/* Dados da viagem */}
-                <div>
-                  <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
-                  <div className="ib-cards4">
-                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-                    <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
-                    <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
-                    <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
-                  </div>
-                </div>
               </div>
-
-              {/* Rodagem & Frenagem */}
-              <div>
-                <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
-                <div className="ib-cards4">
-                  <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
-                    rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
-                  <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
-                    rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-                  <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
-                </div>
-              </div>
-            </>
+            </div>
           )}
         </div>
 
