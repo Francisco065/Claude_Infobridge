@@ -124,11 +124,22 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                     cid = c.get('id')
                     if cid is None:
                         continue
-                    s = _comp_stats.setdefault(cid, {'count': 0, 'exemplo': None})
+                    s = _comp_stats.setdefault(
+                        cid, {'count': 0, 'exemplos': [], 'min': None, 'max': None})
                     s['count'] += 1
                     val = c.get('valor')
-                    if val not in (None, '', 'null') and s['exemplo'] is None:
-                        s['exemplo'] = val
+                    if val in (None, '', 'null'):
+                        continue
+                    # guarda até 6 valores distintos de exemplo
+                    if val not in s['exemplos'] and len(s['exemplos']) < 6:
+                        s['exemplos'].append(val)
+                    # rastreia faixa numérica (ajuda a identificar RPM: 0..milhares)
+                    try:
+                        num_val = float(str(val).replace(',', '.'))
+                        s['min'] = num_val if s['min'] is None else min(s['min'], num_val)
+                        s['max'] = num_val if s['max'] is None else max(s['max'], num_val)
+                    except (ValueError, TypeError):
+                        pass
                 r = processar_posicao(row['veiculo_id'], row['motorista_id'],
                                       tenant['tenant_id'], pos)
                 if r:
