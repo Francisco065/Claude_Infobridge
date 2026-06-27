@@ -31,6 +31,7 @@ from config import get_settings
 from ingestao.worker_dados_novos import processar_posicao, extrair_componente
 from ingestao.multiportal_client_simple import MultiportalClientSimple
 from motor.calculador_indicadores import _calcular_periodo
+from motor.calculador_nota import _calcular_e_salvar as _calcular_nota
 
 log = structlog.get_logger(__name__)
 cfg = get_settings()
@@ -208,6 +209,12 @@ async def _recalcular_mes_atual():
                 par['tenant_id'], par['motorista_id'], par['veiculo_id'],
                 inicio, fim,
             )
+            # Calcula scores + nota de desempenho e gera a nota ao condutor.
+            # Depende do indicador já ter sido salvo acima.
+            await _calcular_nota(
+                par['tenant_id'], par['motorista_id'], par['veiculo_id'],
+                inicio, fim,
+            )
         except Exception as e:
             log.error('recalculo.par_erro', error=str(e),
                       motorista=par['motorista_id'])
@@ -220,12 +227,15 @@ async def _loop_recalculo():
     """A cada CALC_INTERVAL segundos recalcula os indicadores do mês atual."""
     interval = int(os.getenv('CALC_INTERVAL', '3600'))  # 1h por padrão
     log.info('recalculo.iniciando', interval_s=interval)
+    # Pequeno atraso inicial para o primeiro ciclo de polling popular dados,
+    # depois recalcula imediatamente (sem esperar 1h) e segue no intervalo.
+    await asyncio.sleep(int(os.getenv('CALC_INICIAL_DELAY', '60')))
     while _running:
-        await asyncio.sleep(interval)
         try:
             await _recalcular_mes_atual()
         except Exception as e:
             log.error('recalculo.erro_geral', error=str(e))
+        await asyncio.sleep(interval)
 
 
 # ── Loop de polling ───────────────────────────────────────────
@@ -333,6 +343,14 @@ async def debug():
         'leitura_telemetria':    "SELECT COUNT(*) FROM leitura_telemetria",
         'leitura_com_motorista': "SELECT COUNT(*) FROM leitura_telemetria WHERE motorista_id IS NOT NULL",
         'indicador_periodo':     "SELECT COUNT(*) FROM indicador_periodo",
+        # Cobertura de dados CAN (quantas leituras trazem cada componente)
+        'leit_com_rpm':          "SELECT COUNT(*) FROM leitura_telemetria WHERE rpm IS NOT NULL",
+        'leit_com_acelerador':   "SELECT COUNT(*) FROM leitura_telemetria WHERE perc_acelerador IS NOT NULL",
+        'leit_com_faixa_rpm':    "SELECT COUNT(*) FROM leitura_telemetria WHERE faixa_rpm IS NOT NULL",
+        'leit_com_velocidade':   "SELECT COUNT(*) FROM leitura_telemetria WHERE velocidade IS NOT NULL",
+        'leit_com_odometro':     "SELECT COUNT(*) FROM leitura_telemetria WHERE odometro_km IS NOT NULL",
+        'leit_com_consumo':      "SELECT COUNT(*) FROM leitura_telemetria WHERE consumo_total_l IS NOT NULL",
+        'indicadores_com_nota':  "SELECT COUNT(*) FROM indicador_periodo WHERE nota_desempenho IS NOT NULL",
     }
     # Diagnóstico de variáveis de ambiente relacionadas a banco (sem expor segredos)
     candidatas = [
