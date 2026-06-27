@@ -154,6 +154,7 @@ function CardComportamento({ nome, pct, pol = "maior", semDados }: {
 function CardMovimento({ movimentoS, paradoS, semDados }: {
   movimentoS: number; paradoS: number; semDados?: boolean;
 }) {
+  const [tip, setTip] = useState(false);
   const totalS = movimentoS + paradoS;
   const semTempo = semDados || totalS <= 0;
   const pctMov = totalS > 0 ? (movimentoS / totalS) * 100 : 0;
@@ -168,7 +169,34 @@ function CardMovimento({ movimentoS, paradoS, semDados }: {
         <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 600, color: st.cor, fontFeatureSettings: "'tnum'" }}>
           {semTempo ? "—" : `${pctMov.toFixed(0)}%`}
         </span>
-        <i className={`ti ${st.icon}`} aria-hidden style={{ fontSize: 18, color: st.cor }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 7, position: "relative" }}>
+          <button
+            type="button"
+            aria-label="O que significa Em movimento e Parado"
+            aria-expanded={tip}
+            style={{ cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 0, color: "#B4B7BE" }}
+            onMouseEnter={() => setTip(true)}
+            onMouseLeave={() => setTip(false)}
+            onFocus={() => setTip(true)}
+            onBlur={() => setTip(false)}
+            onClick={() => setTip(v => !v)}
+            onKeyDown={e => { if (e.key === "Escape") setTip(false); }}
+          >
+            <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 15, color: "#B4B7BE" }} />
+          </button>
+          {tip && (
+            <div role="tooltip" style={{
+              position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
+              borderRadius: 10, padding: "10px 12px", fontSize: 11.5, width: 214, lineHeight: 1.55, textAlign: "left",
+              boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease",
+            }}>
+              <b>Em movimento</b>: tempo com o veículo em deslocamento (velocidade &gt; 0).<br />
+              <b>Parado</b>: tempo ligado, mas sem deslocamento.<br />
+              Base: tempo com telemetria no período. Fica verde quando o movimento é ≥ 45%.
+            </div>
+          )}
+          <i className={`ti ${st.icon}`} aria-hidden style={{ fontSize: 18, color: st.cor }} />
+        </div>
       </div>
       <Segmentos pct={semTempo ? 0 : pctMov} cor={st.cor} />
       <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
