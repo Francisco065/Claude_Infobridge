@@ -3,103 +3,173 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiLogin, apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
 
+// ── Paleta ────────────────────────────────────────────────────
+const VINHO = "#6E1414";
+const VERDE = "#16A34A";
+const AMARELO = "#D97706";
+const VERMELHO = "#DC2626";
+const TINT = { verde: "#F0FAF3", amarelo: "#FEF7EC", vermelho: "#FDF1F1" };
+
+const MONO = "'IBM Plex Mono', ui-monospace, monospace";
+const SANS = "'IBM Plex Sans', system-ui, sans-serif";
+
 // ── Conversão segura para número ──────────────────────────────
-// Colunas numeric do Postgres chegam como string no JSON; converter
-// antes de usar .toFixed/.toLocaleString evita o crash da página.
 function num(v: any): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-// ── Helpers de cor ────────────────────────────────────────────
-function percCor(valor: number, thresholds: [number, number]) {
-  if (valor >= thresholds[0]) return "text-green-400";
-  if (valor >= thresholds[1]) return "text-yellow-400";
-  return "text-red-400";
+// Cor semântica uniforme pelo valor exibido (≥70 bom, ≥40 atenção, <40 crítico)
+function corPorValor(pct: number): string {
+  if (pct >= 70) return VERDE;
+  if (pct >= 40) return AMARELO;
+  return VERMELHO;
 }
-function inversoCor(valor: number, thresholds: [number, number]) {
-  if (valor <= thresholds[0]) return "text-green-400";
-  if (valor <= thresholds[1]) return "text-yellow-400";
-  return "text-red-400";
-}
-function notaCor(nota: number) {
-  if (nota >= 80) return { ring: "#22c55e", label: "Ótimo", text: "text-green-400" };
-  if (nota >= 60) return { ring: "#eab308", label: "Regular", text: "text-yellow-400" };
-  return { ring: "#ef4444", label: "Crítico", text: "text-red-400" };
+function tintPorValor(pct: number): string {
+  if (pct >= 70) return TINT.verde;
+  if (pct >= 40) return TINT.amarelo;
+  return TINT.vermelho;
 }
 
-// ── Gauge circular ────────────────────────────────────────────
-function GaugeCircular({ nota }: { nota: number }) {
-  const cor = notaCor(nota);
-  const r = 52, c = 2 * Math.PI * r;
+// ── Medidor circular de nota ──────────────────────────────────
+function Gauge({ nota }: { nota: number }) {
+  const cor = corPorValor(nota);
+  const label = nota >= 70 ? "Ótimo" : nota >= 40 ? "Regular" : "Crítico";
+  const r = 54, c = 2 * Math.PI * r;
   return (
-    <svg width="140" height="140" viewBox="0 0 140 140">
-      <circle cx="70" cy="70" r={r} fill="none" stroke="#1f2937" strokeWidth="12" />
-      <circle cx="70" cy="70" r={r} fill="none" stroke={cor.ring} strokeWidth="12"
+    <svg width="150" height="150" viewBox="0 0 150 150">
+      <circle cx="75" cy="75" r={r} fill="none" stroke="#EDEFF2" strokeWidth="12" />
+      <circle cx="75" cy="75" r={r} fill="none" stroke={cor} strokeWidth="12"
         strokeDasharray={`${(nota / 100) * c} ${c}`} strokeLinecap="round"
-        transform="rotate(-90 70 70)" />
-      <text x="70" y="68" textAnchor="middle" dominantBaseline="central"
-        fill={cor.ring} fontSize="28" fontWeight="bold">{nota ?? "—"}</text>
-      <text x="70" y="94" textAnchor="middle" fill="#9ca3af" fontSize="11">{cor.label}</text>
+        transform="rotate(-90 75 75)" />
+      <text x="75" y="72" textAnchor="middle" dominantBaseline="central"
+        fill={cor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{nota}</text>
+      <text x="75" y="100" textAnchor="middle" fill="#8A8D96" fontSize="12"
+        style={{ fontFamily: SANS }}>{label}</text>
     </svg>
   );
 }
 
-// ── Card indicador ────────────────────────────────────────────
-function CardIndicador({ label, perc, tempo, cor }: {
-  label: string; perc: number; tempo?: string; cor: string;
+// ── Barra segmentada (5 segmentos) ────────────────────────────
+function Segmentos({ pct, cor }: { pct: number; cor: string }) {
+  const cheios = Math.round(pct / 20);
+  return (
+    <div style={{ display: "flex", gap: 3, margin: "10px 0 8px" }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < cheios ? cor : "#E7E9ED" }} />
+      ))}
+    </div>
+  );
+}
+
+// ── Cartão de comportamento ───────────────────────────────────
+function CardComportamento({ nome, pct, icone, forcarVerde }: {
+  nome: string; pct: number; icone?: string; forcarVerde?: boolean;
 }) {
-  const estrelas = Math.round((perc / 100) * 5);
+  const valor = forcarVerde ? 100 : pct;
+  const cor = forcarVerde ? VERDE : corPorValor(valor);
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-1">
-      <span className={`text-2xl font-bold ${cor}`}>{perc} %</span>
-      {tempo && <span className="text-xs text-gray-500">{tempo}</span>}
-      <div className="flex gap-0.5 mt-1">
-        {[1,2,3,4,5].map(i => (
-          <span key={i} className={`text-xs ${i <= estrelas ? cor : "text-gray-700"}`}>★</span>
-        ))}
+    <div style={{
+      background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13,
+      padding: "14px 15px", boxShadow: `inset 3px 0 0 0 ${cor}, 0 1px 3px rgba(30,32,40,.04)`,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 600, color: cor, fontFeatureSettings: "'tnum'" }}>
+          {valor.toFixed(forcarVerde ? 0 : 1)} %
+        </span>
+        {icone && <i className={`ti ${icone}`} style={{ fontSize: 18, color: cor }} />}
       </div>
-      <span className="text-xs text-gray-300 mt-1 leading-tight">{label}</span>
+      <Segmentos pct={valor} cor={cor} />
+      <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>{nome}</span>
     </div>
   );
 }
 
-// ── Barra acelerador ──────────────────────────────────────────
-function BarraAcelerador({ ideal, atencao, critico }: { ideal: number; atencao: number; critico: number }) {
+// ── Linha do acelerador ───────────────────────────────────────
+function LinhaAcel({ nome, valor, cor }: { nome: string; valor: number; cor: string }) {
   return (
-    <div className="bg-gray-800 rounded-xl p-5">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Pressão do Acelerador</h3>
-      <div className="flex gap-3 h-28 items-end mb-3">
-        {[
-          { label: "Ideal", val: ideal, bg: "bg-green-500", text: "text-green-400" },
-          { label: "Atenção", val: atencao, bg: "bg-yellow-500", text: "text-yellow-400" },
-          { label: "Crítico", val: critico, bg: "bg-red-500", text: "text-red-400" },
-        ].map(b => (
-          <div key={b.label} className="flex flex-col items-center gap-1 flex-1">
-            <span className={`${b.text} text-sm font-bold`}>{b.val?.toFixed(1)}%</span>
-            <div className={`w-full ${b.bg} rounded-t`} style={{ height: `${Math.max(b.val ?? 0, 2)}%` }} />
-            <span className="text-xs text-gray-500">{b.label}</span>
-          </div>
-        ))}
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", boxShadow: `inset 3px 0 0 0 ${cor}`, paddingLeft: 12 }}>
+      <span style={{ flex: "0 0 80px", fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>{nome}</span>
+      <span style={{ flex: "0 0 56px", fontFamily: MONO, fontSize: 14, fontWeight: 600, color: cor, fontFeatureSettings: "'tnum'" }}>
+        {valor.toFixed(1)}%
+      </span>
+      <div style={{ flex: 1, height: 8, borderRadius: 5, background: "#EDEFF2", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.min(valor, 100)}%`, background: cor, borderRadius: 5 }} />
       </div>
     </div>
   );
 }
 
-// ── Stat card ─────────────────────────────────────────────────
-function Stat({ icon, label, valor }: { icon: string; label: string; valor: string }) {
+// ── Cartão de estatística (chip de ícone + valor + rótulo) ────
+function CardStat({ icone, valor, rotulo, chipBg, chipCor }: {
+  icone: string; valor: string; rotulo: string; chipBg?: string; chipCor?: string;
+}) {
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex items-center gap-3">
-      <span className="text-xl">{icon}</span>
-      <div>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-white font-bold text-sm">{valor}</p>
+    <div style={{
+      background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13,
+      padding: 14, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 1px 3px rgba(30,32,40,.04)",
+    }}>
+      <span style={{
+        flex: "0 0 36px", width: 36, height: 36, borderRadius: 10, display: "flex",
+        alignItems: "center", justifyContent: "center", background: chipBg ?? "#F4EDED",
+      }}>
+        <i className={`ti ${icone}`} style={{ fontSize: 18, color: chipCor ?? VINHO }} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <p style={{ fontFamily: MONO, fontSize: 16, fontWeight: 600, color: "#1F2024", fontFeatureSettings: "'tnum'", margin: 0 }}>{valor}</p>
+        <p style={{ fontSize: 12, color: "#5A5D65", margin: "2px 0 0" }}>{rotulo}</p>
       </div>
     </div>
   );
 }
 
-// ── Tela de login ─────────────────────────────────────────────
+// ── Título de seção ───────────────────────────────────────────
+function TituloSecao({ children, icone }: { children: React.ReactNode; icone?: string }) {
+  return (
+    <h2 style={{
+      fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase",
+      color: "#8A8D96", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 7,
+    }}>
+      {icone && <i className={`ti ${icone}`} style={{ fontSize: 15, color: VINHO }} />}
+      {children}
+    </h2>
+  );
+}
+
+// ── Logotipo Infobridge (marca ponte + caminhão, em vinho) ────
+function LogoInfobridge({ height = 38 }: { height?: number }) {
+  return (
+    <svg height={height} viewBox="0 0 120 76" fill="none" aria-label="Infobridge">
+      <g stroke={VINHO} strokeWidth="3.4" strokeLinecap="round" fill="none">
+        {/* torres */}
+        <line x1="40" y1="10" x2="40" y2="60" />
+        <line x1="80" y1="10" x2="80" y2="60" />
+        {/* cabo principal (catenária central) */}
+        <path d="M40 12 Q60 40 80 12" />
+        {/* cabos laterais até o tabuleiro */}
+        <path d="M40 12 Q20 42 6 60" />
+        <path d="M80 12 Q100 42 114 60" />
+        {/* pendurais */}
+        <line x1="50" y1="20" x2="50" y2="60" strokeWidth="1.6" />
+        <line x1="60" y1="26" x2="60" y2="60" strokeWidth="1.6" />
+        <line x1="70" y1="20" x2="70" y2="60" strokeWidth="1.6" />
+        <line x1="26" y1="33" x2="26" y2="60" strokeWidth="1.6" />
+        <line x1="94" y1="33" x2="94" y2="60" strokeWidth="1.6" />
+        {/* tabuleiro */}
+        <line x1="5" y1="60" x2="115" y2="60" />
+      </g>
+      {/* caminhão central */}
+      <g fill={VINHO}>
+        <rect x="52" y="40" width="16" height="14" rx="2.5" />
+        <rect x="64" y="44" width="6" height="10" rx="1.5" />
+        <circle cx="56" cy="56" r="3" />
+        <circle cx="66" cy="56" r="3" />
+      </g>
+    </svg>
+  );
+}
+
+// ── Tela de login (tema claro) ────────────────────────────────
 function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -119,29 +189,32 @@ function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void
     }
   }
 
+  const input: React.CSSProperties = {
+    width: "100%", background: "#F6F7F9", border: "1px solid #E2E4E9", borderRadius: 10,
+    padding: "10px 12px", fontSize: 14, color: "#1F2024", fontFamily: SANS, outline: "none",
+  };
+
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
-      <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="bg-emerald-500 text-black font-black text-lg px-3 py-1 rounded-lg">INFO</div>
-          <div>
-            <p className="text-xs text-emerald-400 tracking-widest uppercase">Infobridge</p>
-            <p className="text-white font-bold">Info Analise</p>
+    <div style={{ minHeight: "100vh", background: "#E9EBEF", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: SANS }}>
+      <div style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", padding: 32, width: "100%", maxWidth: 380 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 26 }}>
+          <LogoInfobridge height={40} />
+          <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 12 }}>
+            <p style={{ fontSize: 8, letterSpacing: 2.4, color: VINHO, textTransform: "uppercase", margin: 0 }}>Infobridge</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#1F2024", margin: "2px 0 0" }}>Info Análise</p>
           </div>
         </div>
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">E-mail</label>
-            <input className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-              type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            <label style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>E-mail</label>
+            <input style={input} type="email" value={email} onChange={e => setEmail(e.target.value)} required />
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Senha</label>
-            <input className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
-              type="password" value={senha} onChange={e => setSenha(e.target.value)} required />
+            <label style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>Senha</label>
+            <input style={input} type="password" value={senha} onChange={e => setSenha(e.target.value)} required />
           </div>
-          {erro && <p className="text-red-400 text-xs">{erro}</p>}
-          <button className="w-full bg-emerald-600 hover:bg-emerald-500 rounded-lg py-2 text-sm font-bold transition-colors disabled:opacity-50"
+          {erro && <p style={{ color: VERMELHO, fontSize: 12, margin: 0 }}>{erro}</p>}
+          <button style={{ width: "100%", background: VINHO, color: "#fff", borderRadius: 10, padding: "11px", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer", opacity: carregando ? 0.6 : 1 }}
             disabled={carregando}>{carregando ? "Entrando..." : "Entrar"}</button>
         </form>
       </div>
@@ -157,6 +230,7 @@ export default function InfoAnalisePage() {
   const [selecionado, setSelecionado] = useState<any | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [tooltipAcel, setTooltipAcel] = useState(false);
 
   const buscarIndicadores = useCallback(async (tk: string) => {
     setCarregando(true); setErro("");
@@ -166,7 +240,6 @@ export default function InfoAnalisePage() {
       if (res.dados?.length) setSelecionado(res.dados[0]);
     } catch (e: any) {
       const msg = e.message ?? "Erro ao carregar indicadores";
-      // Sessão expirada/inválida: volta para o login
       if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
       else setErro(msg);
     } finally {
@@ -174,7 +247,6 @@ export default function InfoAnalisePage() {
     }
   }, []);
 
-  // Restaura a sessão salva ao abrir/atualizar a página
   useEffect(() => {
     const sessao = carregarSessao();
     if (sessao?.token) {
@@ -193,34 +265,50 @@ export default function InfoAnalisePage() {
   if (!token) return <LoginForm onLogin={handleLogin} />;
 
   const d = selecionado;
+  const hoje = new Date().toLocaleDateString("pt-BR");
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
+    <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 30, fontFamily: SANS }}>
+      {/* estilos globais auxiliares (ícones + animação do tooltip) */}
+      <style>{`
+        .ti { font-family: 'tabler-icons' !important; font-style: normal; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
+      `}</style>
 
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-500 text-black font-black text-lg px-3 py-1 rounded-lg">INFO</div>
-          <div>
-            <p className="text-xs text-emerald-400 uppercase tracking-widest">Infobridge</p>
-            <h1 className="text-xl font-bold">Info Analise</h1>
+      <div style={{
+        maxWidth: 1120, margin: "0 auto", background: "#FFFFFF", border: "1px solid #E2E4E9",
+        borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", overflow: "hidden",
+      }}>
+        {/* Cabeçalho */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <LogoInfobridge height={38} />
+            <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 14 }}>
+              <p style={{ fontSize: 8, letterSpacing: 2.4, color: VINHO, textTransform: "uppercase", margin: 0 }}>Infobridge</p>
+              <h1 style={{ fontSize: 16, fontWeight: 700, color: "#1F2024", margin: "2px 0 0" }}>Info Análise</h1>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <i className="ti ti-user" style={{ fontSize: 17, color: VINHO }} />
+            </span>
+            <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
+            <button onClick={() => { limparSessao(); setToken(null); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
+              <i className="ti ti-logout" style={{ fontSize: 15 }} /> Sair
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">👤 {nomeUsuario}</span>
-          <button onClick={() => { limparSessao(); setToken(null); }}
-            className="text-xs text-gray-500 hover:text-red-400 transition-colors">Sair</button>
-        </div>
-      </div>
 
-      {/* Seletor de período */}
-      {indicadores.length > 1 && (
-        <div className="mb-6">
-          <label className="text-xs text-gray-400 block mb-1">Período</label>
+        {/* Faixa de filtros */}
+        <div style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2" }}>
+          <label style={{ fontSize: 11, color: "#8A8D96", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
           <select
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+            value={selecionado ? indicadores.indexOf(selecionado) : 0}
             onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
+            style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 360 }}
           >
+            {indicadores.length === 0 && <option>—</option>}
             {indicadores.map((ind, i) => (
               <option key={ind.id} value={i}>
                 {ind.motorista?.nome ?? "—"} — {ind.periodoInicio} a {ind.periodoFim}
@@ -228,95 +316,132 @@ export default function InfoAnalisePage() {
             ))}
           </select>
         </div>
-      )}
 
-      {carregando && (
-        <div className="text-center py-20 text-gray-400">Carregando dados...</div>
-      )}
+        {/* Conteúdo */}
+        <div style={{ background: "#F6F7F9", padding: 24 }}>
+          {carregando && <div style={{ textAlign: "center", padding: 80, color: "#8A8D96" }}>Carregando dados...</div>}
+          {erro && <div style={{ background: TINT.vermelho, border: `1px solid ${VERMELHO}33`, borderRadius: 12, padding: 16, color: VERMELHO, fontSize: 14, marginBottom: 20 }}>{erro}</div>}
 
-      {erro && (
-        <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 text-red-300 text-sm mb-6">{erro}</div>
-      )}
+          {!carregando && !d && !erro && (
+            <div style={{ textAlign: "center", padding: 80, color: "#8A8D96" }}>
+              <p style={{ fontSize: 18, margin: "0 0 8px", color: "#5A5D65" }}>Nenhum indicador encontrado</p>
+              <p style={{ fontSize: 14, margin: 0 }}>Os dados aparecem após o worker de telemetria processar as viagens.</p>
+            </div>
+          )}
 
-      {!carregando && !d && !erro && (
-        <div className="text-center py-20 text-gray-500">
-          <p className="text-lg mb-2">Nenhum indicador encontrado</p>
-          <p className="text-sm">Os dados aparecem após o worker de telemetria processar as viagens.</p>
-        </div>
-      )}
-
-      {d && (
-        <>
-          {/* Linha de identificação */}
-          <div className="flex flex-wrap gap-4 mb-6 bg-gray-900 rounded-xl px-5 py-3">
-            <span className="text-sm"><span className="text-emerald-400">🚛</span> {d.veiculo?.placa ?? "—"}</span>
-            <span className="text-sm"><span className="text-emerald-400">👤</span> {d.motorista?.nome ?? "—"}</span>
-            <span className="text-sm"><span className="text-emerald-400">📅</span> {d.periodoInicio} → {d.periodoFim}</span>
-          </div>
-
-          {/* Nota + veículo + indicadores */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-            <div className="bg-gray-900 rounded-xl p-5 flex flex-col items-center gap-4">
-              <p className="text-xs text-gray-400 uppercase tracking-wider self-start">Nota de Desempenho</p>
-              <GaugeCircular nota={Math.round(num(d.notaDesempenho))} />
-              <div className="w-full border-t border-gray-700 pt-3 space-y-1 text-xs text-gray-400">
-                <p>🚛 <span className="text-white">{d.veiculo?.marca ?? "—"}</span></p>
-                <p>📅 <span className="text-white">{d.veiculo?.anoFabricacao ?? "—"}</span></p>
-                <p>🔢 <span className="text-white">Frota {d.veiculo?.frota ?? "—"}</span></p>
-                <p>📋 <span className="text-white text-[11px]">{d.veiculo?.modelo ?? "—"}</span></p>
+          {d && (
+            <>
+              {/* Identificação da viagem */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 18, background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 12, padding: "12px 18px", marginBottom: 18 }}>
+                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-truck" style={{ color: VINHO }} /> {d.veiculo?.placa ?? "—"}</span>
+                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-id-badge-2" style={{ color: VINHO }} /> {d.motorista?.nome ?? "—"}</span>
+                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-calendar" style={{ color: VINHO }} /> {d.periodoInicio} → {d.periodoFim}</span>
               </div>
-            </div>
 
-            <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-              <CardIndicador label="Faixa verde" perc={+num(d.percFaixaVerdeInicial).toFixed(1)}
-                cor={percCor(num(d.percFaixaVerdeInicial), [80, 60])} />
-              <CardIndicador label="Aproveitamento de embalo" perc={+num(d.percEmbalo).toFixed(1)}
-                cor={percCor(num(d.percEmbalo), [20, 10])} />
-              <CardIndicador label="Motor ligado parado" perc={+num(d.percMotorOcioso).toFixed(1)}
-                cor={inversoCor(num(d.percMotorOcioso), [5, 15])} />
-              <CardIndicador label="Acelerando acima do verde" perc={+num(d.percAcelCritico).toFixed(1)}
-                cor={inversoCor(num(d.percAcelCritico), [0, 3])} />
-              <CardIndicador label="Excesso de velocidade" perc={+num(d.percExcessoVelocidade).toFixed(1)}
-                cor={inversoCor(num(d.percExcessoVelocidade), [0, 1])} />
-              <CardIndicador label="Faixa verde total" perc={+(num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)).toFixed(1)}
-                cor={percCor(num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal), [90, 70])} />
-              <CardIndicador label="Faixa verde final" perc={+num(d.percFaixaVerdeFinal).toFixed(1)}
-                cor={percCor(num(d.percFaixaVerdeFinal), [10, 5])} />
-              <CardIndicador label="Freio motor" perc={+num(d.percFreioMotorOk).toFixed(1)}
-                cor={percCor(num(d.percFreioMotorOk), [10, 3])} />
-              <CardIndicador label="Em movimento" perc={+(100 - num(d.percMotorOcioso)).toFixed(1)}
-                cor={percCor(100 - num(d.percMotorOcioso), [80, 60])} />
-            </div>
-          </div>
+              <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 18, marginBottom: 18, alignItems: "start" }}>
+                {/* Nota + dados do veículo */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                  <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
+                  <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
+                    <Gauge nota={Math.round(num(d.notaDesempenho))} />
+                  </div>
+                  <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      ["Marca", d.veiculo?.marca], ["Ano", d.veiculo?.anoFabricacao],
+                      ["Frota", d.veiculo?.frota], ["Modelo", d.veiculo?.modelo],
+                    ].map(([k, v]) => (
+                      <div key={String(k)} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ fontSize: 12, color: "#8A8D96" }}>{k}</span>
+                        <span style={{ fontSize: 12, color: "#33363D", fontWeight: 700, textAlign: "right" }}>{v ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-          {/* Acelerador + Estatísticas */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
-            <BarraAcelerador
-              ideal={num(d.percAcelIdeal)}
-              atencao={num(d.percAcelAtencao)}
-              critico={num(d.percAcelCritico)}
-            />
-            <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat icon="📍" label="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-              <Stat icon="⚡" label="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
-              <Stat icon="⛽" label="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
-              <Stat icon="📊" label="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-              <Stat icon="🔄" label="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
-              <Stat icon="⚠️" label="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
-              <Stat icon="🛑" label="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-              <Stat icon="📉" label="Freadas / 100 km" valor={`${num(d.frenagensPor100km).toFixed(1)}`} />
-            </div>
-          </div>
+                {/* Comportamento de condução — 3×3 */}
+                <div>
+                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 11 }}>
+                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
+                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
+                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
+                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} icone="ti-trending-up" />
+                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} icone="ti-brand-speedtest" />
+                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} icone="ti-disc" />
+                    <CardComportamento nome="Em movimento" pct={100} forcarVerde icone="ti-circle-check-filled" />
+                  </div>
+                </div>
+              </div>
 
-          {/* Legenda */}
-          <div className="flex gap-6 text-xs text-gray-500 border-t border-gray-800 pt-4">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Bom</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" /> Atenção</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Crítico</span>
-            <span className="ml-auto">Infobridge © 2026</span>
-          </div>
-        </>
-      )}
+              {/* Acelerador + Dados da viagem */}
+              <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 18, marginBottom: 18, alignItems: "start" }}>
+                {/* Pressão do acelerador */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
+                    <TituloSecao>Pressão do Acelerador</TituloSecao>
+                    <span
+                      style={{ cursor: "pointer", position: "relative", marginTop: -8 }}
+                      onMouseEnter={() => setTooltipAcel(true)}
+                      onMouseLeave={() => setTooltipAcel(false)}
+                      onClick={() => setTooltipAcel(v => !v)}
+                    >
+                      <i className="ti ti-info-circle" style={{ fontSize: 16, color: "#B4B7BE" }} />
+                      {tooltipAcel && (
+                        <div style={{
+                          position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
+                          borderRadius: 10, padding: "10px 12px", fontSize: 12, width: 168, lineHeight: 1.7,
+                          boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease",
+                        }}>
+                          🟢 Verde — Bom<br />🟡 Amarelo — Atenção<br />🔴 Vermelho — Crítico
+                        </div>
+                      )}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
+                    <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
+                    <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
+                  </div>
+                </div>
+
+                {/* Dados da viagem */}
+                <div>
+                  <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 11 }}>
+                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                    <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+                    <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+                    <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
+                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Rodagem & Frenagem */}
+              <div>
+                <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 11 }}>
+                  <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
+                    rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+                  <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
+                    rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+                  <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Rodapé */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid #EDEFF2", background: "#FFFFFF" }}>
+          <span style={{ fontSize: 12, color: "#8A8D96" }}>Atualizado em {hoje}</span>
+          <span style={{ fontSize: 12, color: "#8A8D96" }}>
+            <span style={{ color: VINHO, fontWeight: 600 }}>INFOBRIDGE</span> · Transformando dados em economia · © 2026
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
