@@ -268,11 +268,34 @@ export default function InfoAnalisePage() {
   const hoje = new Date().toLocaleDateString("pt-BR");
 
   return (
-    <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 30, fontFamily: SANS }}>
+    <div className="ib-page" style={{ minHeight: "100vh", background: "#E9EBEF", fontFamily: SANS }}>
       {/* estilos globais auxiliares (ícones + animação do tooltip) */}
       <style>{`
         .ti { font-family: 'tabler-icons' !important; font-style: normal; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
+
+        /* Layout responsivo */
+        .ib-page { padding: 30px; }
+        .ib-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px; margin-bottom: 18px; align-items: start; }
+        .ib-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+        .ib-cards4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
+        .ib-select { min-width: 360px; max-width: 100%; }
+
+        /* Tablet / telas médias */
+        @media (max-width: 900px) {
+          .ib-split { grid-template-columns: 1fr; }
+          .ib-cards4 { grid-template-columns: repeat(2, 1fr); }
+        }
+        /* Celular */
+        @media (max-width: 640px) {
+          .ib-page { padding: 12px; }
+          .ib-cards3 { grid-template-columns: repeat(2, 1fr); }
+          .ib-select { min-width: 0; width: 100%; }
+          .ib-header { flex-wrap: wrap; gap: 12px; }
+        }
+        @media (max-width: 420px) {
+          .ib-cards3, .ib-cards4 { grid-template-columns: 1fr; }
+        }
       `}</style>
 
       <div style={{
@@ -280,7 +303,7 @@ export default function InfoAnalisePage() {
         borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", overflow: "hidden",
       }}>
         {/* Cabeçalho */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2" }}>
+        <div className="ib-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <LogoInfobridge height={38} />
             <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 14 }}>
@@ -306,7 +329,8 @@ export default function InfoAnalisePage() {
           <select
             value={selecionado ? indicadores.indexOf(selecionado) : 0}
             onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
-            style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 360 }}
+            className="ib-select"
+            style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS }}
           >
             {indicadores.length === 0 && <option>—</option>}
             {indicadores.map((ind, i) => (
@@ -338,7 +362,7 @@ export default function InfoAnalisePage() {
                 <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-calendar" style={{ color: VINHO }} /> {d.periodoInicio} → {d.periodoFim}</span>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 18, marginBottom: 18, alignItems: "start" }}>
+              <div className="ib-split">
                 {/* Nota + dados do veículo */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
                   <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
@@ -361,7 +385,7 @@ export default function InfoAnalisePage() {
                 {/* Comportamento de condução — 3×3 */}
                 <div>
                   <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 11 }}>
+                  <div className="ib-cards3">
                     <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
                     <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
                     <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
@@ -376,7 +400,7 @@ export default function InfoAnalisePage() {
               </div>
 
               {/* Acelerador + Dados da viagem */}
-              <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 18, marginBottom: 18, alignItems: "start" }}>
+              <div className="ib-split">
                 {/* Pressão do acelerador */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
@@ -409,7 +433,7 @@ export default function InfoAnalisePage() {
                 {/* Dados da viagem */}
                 <div>
                   <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 11 }}>
+                  <div className="ib-cards4">
                     <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
                     <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
                     <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
@@ -422,7 +446,7 @@ export default function InfoAnalisePage() {
               {/* Rodagem & Frenagem */}
               <div>
                 <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 11 }}>
+                <div className="ib-cards4">
                   <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
                     rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
                   <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
