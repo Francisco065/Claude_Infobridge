@@ -19,6 +19,27 @@ function num(v: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Data "2026-06-01" → "01/06"
+function ddmm(s?: string): string {
+  if (!s || s.length < 10) return "—";
+  return `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+}
+
+// Chip de identificação (pílula) usado na faixa de filtros
+function ChipInfo({ icone, rotulo, valor }: { icone: string; rotulo: string; valor: string }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 7, background: "#FFFFFF",
+      border: "1px solid #E7E9ED", borderRadius: 999, padding: "8px 14px", fontSize: 13,
+      boxShadow: "0 1px 3px rgba(30,32,40,.04)",
+    }}>
+      <i className={`ti ${icone}`} style={{ fontSize: 16, color: VINHO }} />
+      <span style={{ color: "#8A8D96" }}>{rotulo}</span>
+      <span style={{ color: "#33363D", fontWeight: 700 }}>{valor}</span>
+    </span>
+  );
+}
+
 // Cor semântica uniforme pelo valor exibido (≥70 bom, ≥40 atenção, <40 crítico)
 function corPorValor(pct: number): string {
   if (pct >= 70) return VERDE;
@@ -323,22 +344,32 @@ export default function InfoAnalisePage() {
           </div>
         </div>
 
-        {/* Faixa de filtros */}
-        <div style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2" }}>
-          <label style={{ fontSize: 11, color: "#8A8D96", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
-          <select
-            value={selecionado ? indicadores.indexOf(selecionado) : 0}
-            onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
-            className="ib-select"
-            style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS }}
-          >
-            {indicadores.length === 0 && <option>—</option>}
-            {indicadores.map((ind, i) => (
-              <option key={ind.id} value={i}>
-                {ind.motorista?.nome ?? "—"} — {ind.periodoInicio} a {ind.periodoFim}
-              </option>
-            ))}
-          </select>
+        {/* Faixa de filtros: seletor à esquerda, chips de identificação à direita */}
+        <div className="ib-filtros" style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <label style={{ fontSize: 11, color: "#8A8D96", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
+            <select
+              value={selecionado ? indicadores.indexOf(selecionado) : 0}
+              onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
+              className="ib-select"
+              style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS }}
+            >
+              {indicadores.length === 0 && <option>—</option>}
+              {indicadores.map((ind, i) => (
+                <option key={ind.id} value={i}>
+                  {ind.motorista?.nome ?? "—"} — {ind.periodoInicio} a {ind.periodoFim}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {d && (
+            <div className="ib-chips" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <ChipInfo icone="ti-truck" rotulo="Placa" valor={d.veiculo?.placa ?? "—"} />
+              <ChipInfo icone="ti-id-badge-2" rotulo="Motorista" valor={d.motorista?.nome ?? "—"} />
+              <ChipInfo icone="ti-calendar" rotulo="Período" valor={`${ddmm(d.periodoInicio)} → ${ddmm(d.periodoFim)}`} />
+            </div>
+          )}
         </div>
 
         {/* Conteúdo */}
@@ -355,13 +386,6 @@ export default function InfoAnalisePage() {
 
           {d && (
             <>
-              {/* Identificação da viagem */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 18, background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 12, padding: "12px 18px", marginBottom: 18 }}>
-                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-truck" style={{ color: VINHO }} /> {d.veiculo?.placa ?? "—"}</span>
-                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-id-badge-2" style={{ color: VINHO }} /> {d.motorista?.nome ?? "—"}</span>
-                <span style={{ fontSize: 13, color: "#33363D", display: "flex", alignItems: "center", gap: 7 }}><i className="ti ti-calendar" style={{ color: VINHO }} /> {d.periodoInicio} → {d.periodoFim}</span>
-              </div>
-
               <div className="ib-split">
                 {/* Nota + dados do veículo */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
