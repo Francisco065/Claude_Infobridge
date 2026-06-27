@@ -298,8 +298,11 @@ export default function InfoAnalisePage() {
         /* Layout responsivo */
         .ib-page { padding: 30px; }
         .ib-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
-        .ib-main { display: flex; flex-direction: column; gap: 18px; }
-        .ib-side { display: flex; flex-direction: column; gap: 18px; }
+        .ib-pos-comp { grid-column: 1; grid-row: 1; }
+        .ib-pos-nota { grid-column: 2; grid-row: 1; }
+        .ib-pos-viagem { grid-column: 1; grid-row: 2; }
+        .ib-pos-acel { grid-column: 2; grid-row: 2 / span 2; }
+        .ib-pos-rodagem { grid-column: 1; grid-row: 3; }
         .ib-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px; margin-bottom: 18px; align-items: start; }
         .ib-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
         .ib-cards4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
@@ -308,6 +311,9 @@ export default function InfoAnalisePage() {
         /* Tablet / telas médias */
         @media (max-width: 900px) {
           .ib-layout { grid-template-columns: 1fr; }
+          .ib-pos-comp, .ib-pos-nota, .ib-pos-viagem, .ib-pos-acel, .ib-pos-rodagem {
+            grid-column: auto; grid-row: auto;
+          }
           .ib-split { grid-template-columns: 1fr; }
           .ib-cards4 { grid-template-columns: repeat(2, 1fr); }
         }
@@ -390,97 +396,91 @@ export default function InfoAnalisePage() {
 
           {d && (
             <div className="ib-layout">
-              {/* Coluna principal (esquerda): cartões */}
-              <div className="ib-main">
-                {/* Comportamento de condução — 3×3 */}
-                <div>
-                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
-                  <div className="ib-cards3">
-                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
-                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
-                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
-                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} icone="ti-trending-up" />
-                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} icone="ti-brand-speedtest" />
-                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
-                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
-                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} icone="ti-disc" />
-                    <CardComportamento nome="Em movimento" pct={100} forcarVerde icone="ti-circle-check-filled" />
-                  </div>
-                </div>
-
-                {/* Dados da viagem */}
-                <div>
-                  <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
-                  <div className="ib-cards4">
-                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-                    <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
-                    <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
-                    <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-                  </div>
-                </div>
-
-                {/* Rodagem & Frenagem */}
-                <div>
-                  <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
-                  <div className="ib-cards4">
-                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
-                    <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
-                      rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
-                    <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
-                      rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-                    <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
-                  </div>
+              {/* Comportamento de Condução — esquerda, linha 1 */}
+              <div className="ib-pos-comp">
+                <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
+                <div className="ib-cards3">
+                  <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} icone="ti-gauge" />
+                  <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} icone="ti-brand-speedtest" />
+                  <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} icone="ti-steering-wheel" />
+                  <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} icone="ti-trending-up" />
+                  <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} icone="ti-brand-speedtest" />
+                  <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                  <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} icone="ti-gauge" />
+                  <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} icone="ti-disc" />
+                  <CardComportamento nome="Em movimento" pct={100} forcarVerde icone="ti-circle-check-filled" />
                 </div>
               </div>
 
-              {/* Coluna lateral (direita): Nota + Pressão do Acelerador */}
-              <div className="ib-side">
-                {/* Nota + dados do veículo */}
-                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
-                  <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
-                  <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
-                    <Gauge nota={Math.round(num(d.notaDesempenho))} />
-                  </div>
-                  <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
-                    {[
-                      ["Marca", d.veiculo?.marca], ["Ano", d.veiculo?.anoFabricacao],
-                      ["Frota", d.veiculo?.frota], ["Modelo", d.veiculo?.modelo],
-                    ].map(([k, v]) => (
-                      <div key={String(k)} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <span style={{ fontSize: 12, color: "#8A8D96" }}>{k}</span>
-                        <span style={{ fontSize: 12, color: "#33363D", fontWeight: 700, textAlign: "right" }}>{v ?? "—"}</span>
-                      </div>
-                    ))}
-                  </div>
+              {/* Nota de Desempenho — direita, linha 1 (alinhada ao Comportamento) */}
+              <div className="ib-pos-nota" style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
+                <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
+                  <Gauge nota={Math.round(num(d.notaDesempenho))} />
                 </div>
+                <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
+                  {[
+                    ["Marca", d.veiculo?.marca], ["Ano", d.veiculo?.anoFabricacao],
+                    ["Frota", d.veiculo?.frota], ["Modelo", d.veiculo?.modelo],
+                  ].map(([k, v]) => (
+                    <div key={String(k)} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span style={{ fontSize: 12, color: "#8A8D96" }}>{k}</span>
+                      <span style={{ fontSize: 12, color: "#33363D", fontWeight: 700, textAlign: "right" }}>{v ?? "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                {/* Pressão do acelerador */}
-                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
-                    <TituloSecao>Pressão do Acelerador</TituloSecao>
-                    <span
-                      style={{ cursor: "pointer", position: "relative", marginTop: -8 }}
-                      onMouseEnter={() => setTooltipAcel(true)}
-                      onMouseLeave={() => setTooltipAcel(false)}
-                      onClick={() => setTooltipAcel(v => !v)}
-                    >
-                      <i className="ti ti-info-circle" style={{ fontSize: 16, color: "#B4B7BE" }} />
-                      {tooltipAcel && (
-                        <div style={{
-                          position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
-                          borderRadius: 10, padding: "10px 12px", fontSize: 12, width: 168, lineHeight: 1.7,
-                          boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease",
-                        }}>
-                          🟢 Verde — Bom<br />🟡 Amarelo — Atenção<br />🔴 Vermelho — Crítico
-                        </div>
-                      )}
-                    </span>
-                  </div>
-                  <div style={{ marginTop: 6 }}>
-                    <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
-                    <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
-                    <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
-                  </div>
+              {/* Dados da Viagem — esquerda, linha 2 */}
+              <div className="ib-pos-viagem">
+                <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
+                <div className="ib-cards4">
+                  <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                  <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+                  <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+                  <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
+                </div>
+              </div>
+
+              {/* Pressão do Acelerador — direita, linha 2 (alinhada a Dados da Viagem) */}
+              <div className="ib-pos-acel" style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
+                  <TituloSecao>Pressão do Acelerador</TituloSecao>
+                  <span
+                    style={{ cursor: "pointer", position: "relative", marginTop: -8 }}
+                    onMouseEnter={() => setTooltipAcel(true)}
+                    onMouseLeave={() => setTooltipAcel(false)}
+                    onClick={() => setTooltipAcel(v => !v)}
+                  >
+                    <i className="ti ti-info-circle" style={{ fontSize: 16, color: "#B4B7BE" }} />
+                    {tooltipAcel && (
+                      <div style={{
+                        position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
+                        borderRadius: 10, padding: "10px 12px", fontSize: 12, width: 168, lineHeight: 1.7,
+                        boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease",
+                      }}>
+                        🟢 Verde — Bom<br />🟡 Amarelo — Atenção<br />🔴 Vermelho — Crítico
+                      </div>
+                    )}
+                  </span>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
+                  <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
+                  <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
+                </div>
+              </div>
+
+              {/* Rodagem & Frenagem — esquerda, linha 3 */}
+              <div className="ib-pos-rodagem">
+                <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
+                <div className="ib-cards4">
+                  <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+                  <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
+                    rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+                  <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
+                    rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+                  <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
                 </div>
               </div>
             </div>
