@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiLogin, apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
 
+// ── Conversão segura para número ──────────────────────────────
+// Colunas numeric do Postgres chegam como string no JSON; converter
+// antes de usar .toFixed/.toLocaleString evita o crash da página.
+function num(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // ── Helpers de cor ────────────────────────────────────────────
 function percCor(valor: number, thresholds: [number, number]) {
   if (valor >= thresholds[0]) return "text-green-400";
@@ -250,7 +258,7 @@ export default function InfoAnalisePage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
             <div className="bg-gray-900 rounded-xl p-5 flex flex-col items-center gap-4">
               <p className="text-xs text-gray-400 uppercase tracking-wider self-start">Nota de Desempenho</p>
-              <GaugeCircular nota={Math.round(d.notaDesempenho ?? 0)} />
+              <GaugeCircular nota={Math.round(num(d.notaDesempenho))} />
               <div className="w-full border-t border-gray-700 pt-3 space-y-1 text-xs text-gray-400">
                 <p>🚛 <span className="text-white">{d.veiculo?.marca ?? "—"}</span></p>
                 <p>📅 <span className="text-white">{d.veiculo?.anoFabricacao ?? "—"}</span></p>
@@ -260,43 +268,43 @@ export default function InfoAnalisePage() {
             </div>
 
             <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-              <CardIndicador label="Faixa verde" perc={+(d.percFaixaVerdeInicial ?? 0).toFixed(1)}
-                cor={percCor(d.percFaixaVerdeInicial, [80, 60])} />
-              <CardIndicador label="Aproveitamento de embalo" perc={+(d.percEmbalo ?? 0).toFixed(1)}
-                cor={percCor(d.percEmbalo, [20, 10])} />
-              <CardIndicador label="Motor ligado parado" perc={+(d.percMotorOcioso ?? 0).toFixed(1)}
-                cor={inversoCor(d.percMotorOcioso, [5, 15])} />
-              <CardIndicador label="Acelerando acima do verde" perc={+(d.percAcelCritico ?? 0).toFixed(1)}
-                cor={inversoCor(d.percAcelCritico, [0, 3])} />
-              <CardIndicador label="Excesso de velocidade" perc={+(d.percExcessoVelocidade ?? 0).toFixed(1)}
-                cor={inversoCor(d.percExcessoVelocidade, [0, 1])} />
-              <CardIndicador label="Faixa verde total" perc={+(((d.percFaixaVerdeInicial ?? 0) + (d.percFaixaVerdeFinal ?? 0))).toFixed(1)}
-                cor={percCor((d.percFaixaVerdeInicial ?? 0) + (d.percFaixaVerdeFinal ?? 0), [90, 70])} />
-              <CardIndicador label="Faixa verde final" perc={+(d.percFaixaVerdeFinal ?? 0).toFixed(1)}
-                cor={percCor(d.percFaixaVerdeFinal, [10, 5])} />
-              <CardIndicador label="Freio motor" perc={+(d.percFreioMotorOk ?? 0).toFixed(1)}
-                cor={percCor(d.percFreioMotorOk, [10, 3])} />
-              <CardIndicador label="Em movimento" perc={+(d.percEmbalo !== undefined ? 100 - (d.percMotorOcioso ?? 0) : 0).toFixed(1)}
-                cor={percCor(100 - (d.percMotorOcioso ?? 0), [80, 60])} />
+              <CardIndicador label="Faixa verde" perc={+num(d.percFaixaVerdeInicial).toFixed(1)}
+                cor={percCor(num(d.percFaixaVerdeInicial), [80, 60])} />
+              <CardIndicador label="Aproveitamento de embalo" perc={+num(d.percEmbalo).toFixed(1)}
+                cor={percCor(num(d.percEmbalo), [20, 10])} />
+              <CardIndicador label="Motor ligado parado" perc={+num(d.percMotorOcioso).toFixed(1)}
+                cor={inversoCor(num(d.percMotorOcioso), [5, 15])} />
+              <CardIndicador label="Acelerando acima do verde" perc={+num(d.percAcelCritico).toFixed(1)}
+                cor={inversoCor(num(d.percAcelCritico), [0, 3])} />
+              <CardIndicador label="Excesso de velocidade" perc={+num(d.percExcessoVelocidade).toFixed(1)}
+                cor={inversoCor(num(d.percExcessoVelocidade), [0, 1])} />
+              <CardIndicador label="Faixa verde total" perc={+(num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)).toFixed(1)}
+                cor={percCor(num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal), [90, 70])} />
+              <CardIndicador label="Faixa verde final" perc={+num(d.percFaixaVerdeFinal).toFixed(1)}
+                cor={percCor(num(d.percFaixaVerdeFinal), [10, 5])} />
+              <CardIndicador label="Freio motor" perc={+num(d.percFreioMotorOk).toFixed(1)}
+                cor={percCor(num(d.percFreioMotorOk), [10, 3])} />
+              <CardIndicador label="Em movimento" perc={+(100 - num(d.percMotorOcioso)).toFixed(1)}
+                cor={percCor(100 - num(d.percMotorOcioso), [80, 60])} />
             </div>
           </div>
 
           {/* Acelerador + Estatísticas */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
             <BarraAcelerador
-              ideal={+(d.percAcelIdeal ?? 0)}
-              atencao={+(d.percAcelAtencao ?? 0)}
-              critico={+(d.percAcelCritico ?? 0)}
+              ideal={num(d.percAcelIdeal)}
+              atencao={num(d.percAcelAtencao)}
+              critico={num(d.percAcelCritico)}
             />
             <div className="lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat icon="📍" label="Km total" valor={`${(+( d.kmTotal ?? 0)).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-              <Stat icon="⚡" label="Velocidade média" valor={`${+(d.velocidadeMediaKmh ?? 0).toFixed(1)} km/h`} />
-              <Stat icon="⛽" label="Consumo total" valor={`${+(d.consumoTotalLitros ?? 0).toFixed(1)} L`} />
-              <Stat icon="📊" label="Média km/L" valor={`${+(d.mediaKmL ?? 0).toFixed(2)} km/L`} />
-              <Stat icon="🔄" label="Odômetro" valor={`${(+(d.odometroFinalKm ?? 0)).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+              <Stat icon="📍" label="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+              <Stat icon="⚡" label="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+              <Stat icon="⛽" label="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+              <Stat icon="📊" label="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
+              <Stat icon="🔄" label="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
               <Stat icon="⚠️" label="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
               <Stat icon="🛑" label="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-              <Stat icon="📉" label="Freadas / 100 km" valor={`${+(d.frenagensPor100km ?? 0).toFixed(1)}`} />
+              <Stat icon="📉" label="Freadas / 100 km" valor={`${num(d.frenagensPor100km).toFixed(1)}`} />
             </div>
           </div>
 
