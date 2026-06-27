@@ -416,7 +416,6 @@ export default function InfoAnalisePage() {
                     <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
                     <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
                     <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
                   </div>
                 </div>
 
@@ -424,6 +423,7 @@ export default function InfoAnalisePage() {
                 <div>
                   <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
                   <div className="ib-cards4">
+                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
                     <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
                       rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
                     <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
