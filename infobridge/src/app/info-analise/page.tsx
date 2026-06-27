@@ -159,8 +159,8 @@ function AvisoSemDados() {
       <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 18, color: "#6B6E76", marginTop: 1 }} />
       <div style={{ fontSize: 13, color: "#5A5D65", lineHeight: 1.5 }}>
         <b style={{ color: "#3A3D44" }}>Período sem viagens processadas.</b> Os indicadores de comportamento e a nota
-        de desempenho são calculados após o worker de telemetria registrar quilometragem neste período — por isso
-        aparecem como <i>“Sem dados”</i> e não como crítico.
+        de desempenho são calculados após coletar dados de telemetria e registrar quilometragem neste período — por isso
+        aparecem como <i>“Sem dados”</i>. Caso julgue que os dados estão errados, entre em contato com o suporte.
       </div>
     </div>
   );
