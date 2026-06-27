@@ -40,6 +40,10 @@ cfg = get_settings()
 
 _running = True
 
+# Estatística de componentes Multiportal vistos no polling (diagnóstico).
+# Acumula {id_componente: {'count': n, 'exemplo': valor}} de forma não destrutiva.
+_comp_stats: dict[int, dict] = {}
+
 
 def _stop(sig, frame):
     global _running
@@ -115,6 +119,16 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
         for disp in veiculo_raw.get('dispositivos', []):
             registros = []
             for pos in disp.get('posicoes', []):
+                # Diagnóstico: registra quais IDs de componente chegam e um exemplo
+                for c in pos.get('componentes', []) or []:
+                    cid = c.get('id')
+                    if cid is None:
+                        continue
+                    s = _comp_stats.setdefault(cid, {'count': 0, 'exemplo': None})
+                    s['count'] += 1
+                    val = c.get('valor')
+                    if val not in (None, '', 'null') and s['exemplo'] is None:
+                        s['exemplo'] = val
                 r = processar_posicao(row['veiculo_id'], row['motorista_id'],
                                       tenant['tenant_id'], pos)
                 if r:
@@ -329,6 +343,25 @@ async def vincular_telemetria():
         return {'status': 'ok', 'leituras_atualizadas': atualizadas}
     finally:
         await db.close()
+
+
+@api.get('/debug/componentes')
+def debug_componentes():
+    """
+    Lista os IDs de componente Multiportal vistos no polling desde que o worker
+    subiu, ordenados por frequência, com um valor de exemplo. Serve para
+    descobrir sob qual ID este rastreador envia RPM/acelerador/consumo.
+    """
+    itens = sorted(_comp_stats.items(), key=lambda kv: kv[1]['count'], reverse=True)
+    return {
+        'total_ids_distintos': len(itens),
+        'dica_ids_esperados': {
+            'rpm_can': cfg.comp_rpm_can, 'rpm_obd2': cfg.comp_rpm_obd2,
+            'rpm_basico': cfg.comp_rpm_basico, 'acelerador_can': cfg.comp_acelerador_can,
+            'acelerador_obd2': cfg.comp_acelerador_obd2,
+        },
+        'componentes': [{'id': cid, **info} for cid, info in itens],
+    }
 
 
 @api.get('/debug')
