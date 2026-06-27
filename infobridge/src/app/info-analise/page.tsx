@@ -8,7 +8,8 @@ const VINHO = "#6E1414";
 const VERDE = "#16A34A";
 const AMARELO = "#D97706";
 const VERMELHO = "#DC2626";
-const TINT = { verde: "#F0FAF3", amarelo: "#FEF7EC", vermelho: "#FDF1F1" };
+const CINZA = "#9A9DA5";
+const TINT = { verde: "#F0FAF3", amarelo: "#FEF7EC", vermelho: "#FDF1F1", neutro: "#F2F3F5" };
 
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
 const SANS = "'IBM Plex Sans', system-ui, sans-serif";
@@ -26,6 +27,8 @@ type Status = { cor: string; tint: string; icon: string; label: string };
 const ST_BOM: Status = { cor: VERDE, tint: TINT.verde, icon: "ti-circle-check-filled", label: "Bom" };
 const ST_ATENCAO: Status = { cor: AMARELO, tint: TINT.amarelo, icon: "ti-alert-triangle-filled", label: "Atenção" };
 const ST_CRITICO: Status = { cor: VERMELHO, tint: TINT.vermelho, icon: "ti-alert-octagon-filled", label: "Crítico" };
+// Estado neutro: período sem dados suficientes (nenhuma viagem processada).
+const ST_NEUTRO: Status = { cor: CINZA, tint: TINT.neutro, icon: "ti-minus", label: "Sem dados" };
 
 // Cortes iniciais — ponto único de calibração com o time de operação.
 const CORTE_MAIOR = { bom: 70, atencao: 40 }; // ≥bom = verde · ≥atencao = amarelo · resto = vermelho
@@ -79,19 +82,23 @@ function corPorValor(pct: number): string {
 }
 
 // ── Medidor circular de nota ──────────────────────────────────
-function Gauge({ nota }: { nota: number }) {
-  const cor = corPorValor(nota);
-  const label = nota >= CORTE_MAIOR.bom ? "Ótimo" : nota >= CORTE_MAIOR.atencao ? "Regular" : "Crítico";
+function Gauge({ nota, semDados }: { nota: number; semDados?: boolean }) {
+  const cor = semDados ? CINZA : corPorValor(nota);
+  const label = semDados
+    ? "Sem dados"
+    : nota >= CORTE_MAIOR.bom ? "Ótimo" : nota >= CORTE_MAIOR.atencao ? "Regular" : "Crítico";
   const r = 54, c = 2 * Math.PI * r;
   return (
     <svg width="150" height="150" viewBox="0 0 150 150" role="img"
-      aria-label={`Nota de desempenho: ${nota} de 100 — ${label}`}>
+      aria-label={semDados ? "Nota de desempenho: sem dados no período" : `Nota de desempenho: ${nota} de 100 — ${label}`}>
       <circle cx="75" cy="75" r={r} fill="none" stroke="#EDEFF2" strokeWidth="12" />
-      <circle cx="75" cy="75" r={r} fill="none" stroke={cor} strokeWidth="12"
-        strokeDasharray={`${(nota / 100) * c} ${c}`} strokeLinecap="round"
-        transform="rotate(-90 75 75)" />
+      {!semDados && (
+        <circle cx="75" cy="75" r={r} fill="none" stroke={cor} strokeWidth="12"
+          strokeDasharray={`${(nota / 100) * c} ${c}`} strokeLinecap="round"
+          transform="rotate(-90 75 75)" />
+      )}
       <text x="75" y="72" textAnchor="middle" dominantBaseline="central"
-        fill={cor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{nota}</text>
+        fill={cor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{semDados ? "—" : nota}</text>
       <text x="75" y="100" textAnchor="middle" fill="#6B6E76" fontSize="12"
         style={{ fontFamily: SANS }}>{label}</text>
     </svg>
@@ -113,11 +120,12 @@ function Segmentos({ pct, cor }: { pct: number; cor: string }) {
 // ── Cartão de comportamento ───────────────────────────────────
 // `pol` define a polaridade da métrica (item 1). O status traz cor + ícone de
 // forma + rótulo (item 2), garantindo leitura sem depender só da cor.
-function CardComportamento({ nome, pct, pol = "maior" }: {
-  nome: string; pct: number; pol?: Polaridade;
+// Quando `semDados`, o card fica neutro (cinza) e não classifica nada.
+function CardComportamento({ nome, pct, pol = "maior", semDados }: {
+  nome: string; pct: number; pol?: Polaridade; semDados?: boolean;
 }) {
   const valor = pol === "fixo" ? 100 : pct;
-  const st = statusDe(valor, pol);
+  const st = semDados ? ST_NEUTRO : statusDe(valor, pol);
   return (
     <div style={{
       background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13,
@@ -125,17 +133,34 @@ function CardComportamento({ nome, pct, pol = "maior" }: {
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 600, color: st.cor, fontFeatureSettings: "'tnum'" }}>
-          {valor.toFixed(pol === "fixo" ? 0 : 1)}%
+          {semDados ? "—" : `${valor.toFixed(pol === "fixo" ? 0 : 1)}%`}
         </span>
         <i className={`ti ${st.icon}`} aria-hidden style={{ fontSize: 18, color: st.cor }} />
       </div>
-      <Segmentos pct={valor} cor={st.cor} />
+      <Segmentos pct={semDados ? 0 : valor} cor={st.cor} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
         <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500, lineHeight: 1.25 }}>{nome}</span>
         <span style={{
           flexShrink: 0, display: "inline-flex", alignItems: "center", background: st.tint,
           color: st.cor, fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
         }}>{st.label}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Aviso de período sem dados ────────────────────────────────
+function AvisoSemDados() {
+  return (
+    <div role="status" style={{
+      display: "flex", alignItems: "flex-start", gap: 10, background: TINT.neutro,
+      border: "1px solid #E2E4E9", borderRadius: 12, padding: "13px 16px", marginBottom: 20,
+    }}>
+      <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 18, color: "#6B6E76", marginTop: 1 }} />
+      <div style={{ fontSize: 13, color: "#5A5D65", lineHeight: 1.5 }}>
+        <b style={{ color: "#3A3D44" }}>Período sem viagens processadas.</b> Os indicadores de comportamento e a nota
+        de desempenho são calculados após o worker de telemetria registrar quilometragem neste período — por isso
+        aparecem como <i>“Sem dados”</i> e não como crítico.
       </div>
     </div>
   );
@@ -322,6 +347,8 @@ export default function InfoAnalisePage() {
 
   const d = selecionado;
   const hoje = new Date().toLocaleDateString("pt-BR");
+  // Período sem telemetria suficiente: nenhuma quilometragem registrada.
+  const semDados = !!d && num(d.kmTotal) <= 0;
 
   return (
     <div className="ib-page" style={{ minHeight: "100vh", background: "#E9EBEF", fontFamily: SANS }}>
@@ -430,21 +457,23 @@ export default function InfoAnalisePage() {
             </div>
           )}
 
+          {d && semDados && <AvisoSemDados />}
+
           {d && (
             <div className="ib-layout">
               {/* Comportamento de Condução — esquerda, linha 1 */}
               <div className="ib-pos-comp">
                 <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
                 <div className="ib-cards3">
-                  <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" />
-                  <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" />
-                  <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" />
-                  <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" />
-                  <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" />
-                  <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" />
-                  <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" />
-                  <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" />
-                  <CardComportamento nome="Em movimento" pct={100} pol="fixo" />
+                  <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
+                  <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
+                  <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
+                  <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
+                  <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
+                  <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                  <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                  <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
+                  <CardComportamento nome="Em movimento" pct={100} pol="fixo" semDados={semDados} />
                 </div>
               </div>
 
@@ -452,7 +481,7 @@ export default function InfoAnalisePage() {
               <div className="ib-pos-nota" style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
                 <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
                 <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
-                  <Gauge nota={Math.round(num(d.notaDesempenho))} />
+                  <Gauge nota={Math.round(num(d.notaDesempenho))} semDados={semDados} />
                 </div>
                 <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
                   {[
