@@ -200,7 +200,7 @@ function CardMovimento({ movimentoS, paradoS, semDados }: {
       </div>
       <Segmentos pct={semTempo ? 0 : pctMov} cor={st.cor} />
       <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
-        <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>Em movimento</span>
+        <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>Horas produtivas</span>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5A5D65" }}>
           <span><i className="ti ti-steering-wheel" aria-hidden style={{ fontSize: 12, marginRight: 3, color: st.cor }} />
             {semTempo ? "—" : `${h(movimentoS)}h`}</span>
