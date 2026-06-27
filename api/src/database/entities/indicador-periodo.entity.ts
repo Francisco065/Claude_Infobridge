@@ -135,6 +135,16 @@ export class IndicadorPeriodo {
   @Column({ name: 'nota_desempenho', type: 'numeric', precision: 5, scale: 2, nullable: true })
   notaDesempenho: number;
 
+  // ── Tempo em movimento x parado (segundos, base = tempo de telemetria) ──
+  @Column({ name: 'tempo_total_s', type: 'integer', nullable: true })
+  tempoTotalS: number;
+
+  @Column({ name: 'tempo_movimento_s', type: 'integer', nullable: true })
+  tempoMovimentoS: number;
+
+  @Column({ name: 'tempo_parado_s', type: 'integer', nullable: true })
+  tempoParadoS: number;
+
   // ── Metadados ─────────────────────────────────────────────
   @Column({ name: 'total_posicoes', type: 'integer', nullable: true })
   totalPosicoes: number;

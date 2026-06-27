@@ -149,6 +149,40 @@ function CardComportamento({ nome, pct, pol = "maior", semDados }: {
   );
 }
 
+// ── Cartão "Em movimento" (tempo em movimento x parado, em horas + %) ──
+// Base = tempo de telemetria (ativo). Verde se movimento >= 45%, senão amarelo.
+function CardMovimento({ movimentoS, paradoS, semDados }: {
+  movimentoS: number; paradoS: number; semDados?: boolean;
+}) {
+  const totalS = movimentoS + paradoS;
+  const semTempo = semDados || totalS <= 0;
+  const pctMov = totalS > 0 ? (movimentoS / totalS) * 100 : 0;
+  const st = semTempo ? ST_NEUTRO : (pctMov >= 45 ? ST_BOM : ST_ATENCAO);
+  const h = (s: number) => (s / 3600).toFixed(1);
+  return (
+    <div style={{
+      background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13,
+      padding: "14px 15px", boxShadow: `inset 3px 0 0 0 ${st.cor}, 0 1px 3px rgba(30,32,40,.04)`,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 600, color: st.cor, fontFeatureSettings: "'tnum'" }}>
+          {semTempo ? "—" : `${pctMov.toFixed(0)}%`}
+        </span>
+        <i className={`ti ${st.icon}`} aria-hidden style={{ fontSize: 18, color: st.cor }} />
+      </div>
+      <Segmentos pct={semTempo ? 0 : pctMov} cor={st.cor} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
+        <span style={{ fontSize: 13, color: "#3A3D44", fontWeight: 500 }}>Em movimento</span>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5A5D65" }}>
+          <span><i className="ti ti-steering-wheel" aria-hidden style={{ fontSize: 12, marginRight: 3, color: st.cor }} />
+            {semTempo ? "—" : `${h(movimentoS)}h`}</span>
+          <span style={{ color: "#6B6E76" }}>Parado {semTempo ? "—" : `${h(paradoS)}h`}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Aviso de período sem dados ────────────────────────────────
 function AvisoSemDados() {
   return (
@@ -473,7 +507,7 @@ export default function InfoAnalisePage() {
                   <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
                   <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
                   <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
-                  <CardComportamento nome="Em movimento" pct={100} pol="fixo" semDados={semDados} />
+                  <CardMovimento movimentoS={num(d.tempoMovimentoS)} paradoS={num(d.tempoParadoS)} semDados={semDados} />
                 </div>
               </div>
 

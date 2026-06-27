@@ -129,6 +129,11 @@ async def _calcular_periodo(
         if tempo_total_s == 0:
             return
 
+        # ── Tempo em movimento x parado (base = tempo de telemetria) ──
+        # Movimento = velocidade > 0; parado = restante do tempo ativo.
+        tempo_movimento_s = float(df[df['velocidade'].fillna(0) > 0]['delta_t'].sum())
+        tempo_parado_s    = max(0.0, float(tempo_total_s) - tempo_movimento_s)
+
         # ── KM e Consumo ─────────────────────────────────────
         km_total, odometro_ini, odometro_fim, consumo_total = _km_e_consumo(df)
 
@@ -166,6 +171,9 @@ async def _calcular_periodo(
             **faixas_rpm,
             **motor_ocioso,
             **excesso_vel,
+            'tempo_total_s':        int(tempo_total_s),
+            'tempo_movimento_s':    int(tempo_movimento_s),
+            'tempo_parado_s':       int(tempo_parado_s),
             'total_posicoes':       len(df),
         }
 
@@ -336,13 +344,16 @@ async def _salvar_indicador(conn: asyncpg.Connection, ind: dict):
             perc_faixa_verde_inicial, perc_faixa_verde_final,
             perc_freio_motor_ok, perc_freio_motor_acel, perc_embalo,
             perc_motor_ocioso, tempo_motor_ocioso_penalizado_s,
-            perc_excesso_velocidade, total_posicoes
+            perc_excesso_velocidade,
+            tempo_total_s, tempo_movimento_s, tempo_parado_s,
+            total_posicoes
         ) VALUES (
             $1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
             $7, $8, $9, $10, $11, $12, $13,
             $14, $15, $16, $17, $18,
             $19, $20, $21, $22, $23, $24, $25, $26,
-            $27, $28, $29, $30
+            $27, $28, $29, $31, $32, $33,
+            $30
         )
         ON CONFLICT (tenant_id, motorista_id, veiculo_id, periodo_inicio, periodo_fim)
         DO UPDATE SET
@@ -355,6 +366,10 @@ async def _salvar_indicador(conn: asyncpg.Connection, ind: dict):
             perc_freio_motor_acel = EXCLUDED.perc_freio_motor_acel,
             perc_motor_ocioso = EXCLUDED.perc_motor_ocioso,
             perc_excesso_velocidade = EXCLUDED.perc_excesso_velocidade,
+            tempo_total_s = EXCLUDED.tempo_total_s,
+            tempo_movimento_s = EXCLUDED.tempo_movimento_s,
+            tempo_parado_s = EXCLUDED.tempo_parado_s,
+            total_posicoes = EXCLUDED.total_posicoes,
             calculado_em = NOW()
         """,
         ind['tenant_id'], ind['motorista_id'], ind['veiculo_id'],
@@ -372,4 +387,5 @@ async def _salvar_indicador(conn: asyncpg.Connection, ind: dict):
         ind.get('perc_embalo', 0),
         ind.get('perc_motor_ocioso', 0), ind.get('tempo_motor_ocioso_penalizado_s', 0),
         ind.get('perc_excesso_velocidade', 0), ind.get('total_posicoes', 0),
+        ind.get('tempo_total_s', 0), ind.get('tempo_movimento_s', 0), ind.get('tempo_parado_s', 0),
     )
