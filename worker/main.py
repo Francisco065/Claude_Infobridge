@@ -208,9 +208,14 @@ async def _polling_todos() -> dict:
 
 async def _recalcular_mes_atual():
     """Recalcula indicadores do mês corrente para todos os pares com telemetria."""
+    import calendar
     hoje = date.today()
     inicio = hoje.replace(day=1)
-    fim = hoje
+    # Período mensal ESTÁVEL (fim = último dia do mês). Assim o recálculo diário
+    # atualiza a MESMA linha (ON CONFLICT) em vez de criar uma nova por dia —
+    # evita o acúmulo de períodos quase duplicados no filtro.
+    ultimo_dia = calendar.monthrange(hoje.year, hoje.month)[1]
+    fim = hoje.replace(day=ultimo_dia)
 
     db = await asyncpg.connect(cfg.database_url)
     try:

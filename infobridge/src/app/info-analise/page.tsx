@@ -60,6 +60,15 @@ function ddmm(s?: string): string {
   return `${s.slice(8, 10)}/${s.slice(5, 7)}`;
 }
 
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+// "2026-06-01" → "Junho 2026"
+function mesLabel(iso?: string): string {
+  if (!iso || iso.length < 7) return "—";
+  const [a, m] = iso.split("-");
+  return `${MESES[Number(m) - 1] ?? m} ${a}`;
+}
+
 // Chip de identificação (pílula) usado na faixa de filtros
 function ChipInfo({ icone, rotulo, valor }: { icone: string; rotulo: string; valor: string }) {
   return (
@@ -389,14 +398,14 @@ export default function InfoAnalisePage() {
   const buscarIndicadores = useCallback(async (tk: string) => {
     setCarregando(true); setErro("");
     try {
-      const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=50", tk);
+      // limite alto para trazer 100% dos indicadores (sem cortar em 50)
+      const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=1000", tk);
       const dados = res.dados ?? [];
       setIndicadores(dados);
-      // Padrão: primeiro motorista e seu período mais recente (API já vem por período DESC)
+      // Padrão: primeiro motorista (período é resolvido automaticamente no render)
       if (dados.length) {
-        const primeiro = dados[0];
-        setMotoristaSel(primeiro.motorista?.id ?? "");
-        setPeriodoSel(`${primeiro.periodoInicio}|${primeiro.periodoFim}`);
+        setMotoristaSel(dados[0].motorista?.id ?? "");
+        setPeriodoSel("");
       }
     } catch (e: any) {
       const msg = e.message ?? "Erro ao carregar indicadores";
@@ -435,29 +444,31 @@ export default function InfoAnalisePage() {
     return lista.sort((a, b) => a.nome.localeCompare(b.nome));
   })();
 
+  // Períodos do motorista, DEDUPLICADOS por mês: para cada mês mantém a linha
+  // de maior periodoFim (a que reflete todos os dados acumulados do mês).
   const periodosOpc = (() => {
-    const vistos = new Set<string>();
-    const lista: { key: string; inicio: string; fim: string }[] = [];
+    const porMes = new Map<string, { key: string; inicio: string; fim: string; mes: string }>();
     for (const i of indicadores) {
       if (i.motorista?.id !== motoristaSel) continue;
-      const key = `${i.periodoInicio}|${i.periodoFim}`;
-      if (!vistos.has(key)) { vistos.add(key); lista.push({ key, inicio: i.periodoInicio, fim: i.periodoFim }); }
+      const mes = (i.periodoInicio ?? "").slice(0, 7); // YYYY-MM
+      const cur = porMes.get(mes);
+      if (!cur || (i.periodoFim ?? "") > cur.fim) {
+        porMes.set(mes, { key: `${i.periodoInicio}|${i.periodoFim}`, inicio: i.periodoInicio, fim: i.periodoFim, mes });
+      }
     }
-    return lista.sort((a, b) => (a.inicio < b.inicio ? 1 : -1)); // mais recente primeiro
+    return [...porMes.values()].sort((a, b) => (a.mes < b.mes ? 1 : -1)); // mês mais recente primeiro
   })();
 
-  // Ao trocar de motorista, garante um período válido selecionado
   function trocarMotorista(id: string) {
     setMotoristaSel(id);
-    const doMot = indicadores
-      .filter((i) => i.motorista?.id === id)
-      .map((i) => `${i.periodoInicio}|${i.periodoFim}`)
-      .sort((a, b) => (a < b ? 1 : -1));
-    setPeriodoSel(doMot[0] ?? "");
+    setPeriodoSel(""); // período é resolvido pelo fallback abaixo
   }
 
+  // Período ativo: o selecionado (se ainda existir) ou o mais recente do motorista
+  const periodoAtivo = periodosOpc.find((p) => p.key === periodoSel)?.key ?? periodosOpc[0]?.key ?? "";
+
   const d = indicadores.find(
-    (i) => i.motorista?.id === motoristaSel && `${i.periodoInicio}|${i.periodoFim}` === periodoSel,
+    (i) => i.motorista?.id === motoristaSel && `${i.periodoInicio}|${i.periodoFim}` === periodoAtivo,
   ) ?? null;
   const hoje = new Date().toLocaleDateString("pt-BR");
   // Período sem telemetria suficiente: nenhuma quilometragem registrada.
@@ -596,14 +607,14 @@ export default function InfoAnalisePage() {
               <label htmlFor="ib-periodo" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
               <select
                 id="ib-periodo"
-                value={periodoSel}
+                value={periodoAtivo}
                 onChange={(e) => setPeriodoSel(e.target.value)}
                 className="ib-select"
                 style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210 }}
               >
                 {periodosOpc.length === 0 && <option value="">—</option>}
                 {periodosOpc.map((p) => (
-                  <option key={p.key} value={p.key}>{ddmm(p.inicio)} a {ddmm(p.fim)}</option>
+                  <option key={p.key} value={p.key}>{mesLabel(p.inicio)} (até {ddmm(p.fim)})</option>
                 ))}
               </select>
             </div>
