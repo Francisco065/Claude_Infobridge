@@ -47,6 +47,9 @@ export class Motorista {
   @Column({ name: 'categoria_cnh', length: 5, nullable: true })
   categoriaCnh: string;
 
+  @Column({ length: 11, nullable: true })
+  telefone: string;
+
   @Column({ default: true })
   ativo: boolean;
 

@@ -3,16 +3,23 @@ import {
   Matches, Length, IsUUID, IsDateString,
 } from 'class-validator';
 import { PartialType, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsCpf } from '../../common/validators/cpf.validator';
 
 export class CriarMotoristaDto {
   @ApiProperty({ example: 'Carlos Andrade' })
   @IsString() @IsNotEmpty() @Length(3, 200)
   nome: string;
 
-  @ApiPropertyOptional({ example: '12345678901' })
-  @IsOptional()
+  @ApiProperty({ example: '52998224725', description: 'CPF real (11 dígitos)' })
+  @IsString() @IsNotEmpty()
   @Matches(/^\d{11}$/, { message: 'CPF deve ter 11 dígitos numéricos' })
-  cpf?: string;
+  @IsCpf()
+  cpf: string;
+
+  @ApiProperty({ example: '11987654321', description: 'Telefone com DDD (10 ou 11 dígitos)' })
+  @IsString() @IsNotEmpty()
+  @Matches(/^\d{10,11}$/, { message: 'Telefone deve ter DDD + número (10 ou 11 dígitos)' })
+  telefone: string;
 
   @ApiPropertyOptional({ example: '12345678901' })
   @IsOptional() @IsString()

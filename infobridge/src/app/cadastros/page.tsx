@@ -27,6 +27,7 @@ type Motorista = {
   nome: string;
   cpf?: string;
   cnh?: string;
+  telefone?: string;
   ativo?: boolean;
   // vínculo (qualquer um destes, conforme o backend) ─ ver PULL_REQUEST
   veiculoId?: string | null;
@@ -55,6 +56,28 @@ const cpfFmt = (cpf?: string | null) => {
   const d = (cpf ?? "").replace(/\D/g, "");
   if (d.length !== 11) return cpf || "";
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+};
+
+// Valida CPF real (11 dígitos + dígitos verificadores). Rejeita sequências iguais.
+function validarCpf(valor: string): boolean {
+  const c = (valor ?? "").replace(/\D/g, "");
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  const dig = (base: number) => {
+    let soma = 0;
+    for (let i = 0; i < base; i++) soma += parseInt(c[i], 10) * (base + 1 - i);
+    const r = 11 - (soma % 11);
+    return r >= 10 ? 0 : r;
+  };
+  return dig(9) === parseInt(c[9], 10) && dig(10) === parseInt(c[10], 10);
+}
+
+// Telefone: só dígitos, com DDD, 10 (fixo) ou 11 (celular) caracteres.
+const telefoneValido = (valor: string) => /^\d{10,11}$/.test((valor ?? "").replace(/\D/g, ""));
+const telFmt = (tel?: string | null) => {
+  const d = (tel ?? "").replace(/\D/g, "");
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return tel || "";
 };
 
 // ── Logotipo Infobridge (idêntico ao da Info Análise) ─────────
@@ -152,6 +175,7 @@ export default function CadastrosPage() {
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [cnh, setCnh] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [salvandoMoto, setSalvandoMoto] = useState(false);
 
   // Busca + vínculo inline por linha
@@ -259,14 +283,27 @@ export default function CadastrosPage() {
   async function criarMotorista(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
-    setSalvandoMoto(true); setErro(""); setAviso("");
+    setErro(""); setAviso("");
+
+    // Validações de cliente (CPF obrigatório e real; telefone com DDD)
+    const cpfDigitos = cpf.replace(/\D/g, "");
+    if (!validarCpf(cpfDigitos)) {
+      setErro("CPF inválido. Informe um CPF real com 11 dígitos.");
+      return;
+    }
+    const telDigitos = telefone.replace(/\D/g, "");
+    if (!telefoneValido(telDigitos)) {
+      setErro("Telefone inválido. Use DDD + número (10 ou 11 dígitos).");
+      return;
+    }
+
+    setSalvandoMoto(true);
     try {
-      const body: Record<string, string> = { nome };
-      if (cpf.trim()) body.cpf = cpf.trim();
+      const body: Record<string, string> = { nome, cpf: cpfDigitos, telefone: telDigitos };
       if (cnh.trim()) body.cnh = cnh.trim();
       const novo = await apiPost<Motorista>("/motoristas", token, body);
       setAviso(`Motorista “${novo.nome}” criado.`);
-      setNome(""); setCpf(""); setCnh("");
+      setNome(""); setCpf(""); setCnh(""); setTelefone("");
       await carregar(token);
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao criar motorista");
@@ -434,7 +471,7 @@ export default function CadastrosPage() {
                   const p = PALETAS[i % PALETAS.length];
                   const ativo = m.ativo !== false;
                   const veic = veiculoDoMotorista.get(m.id) ?? null;
-                  const sub = [m.cpf ? `CPF ${cpfFmt(m.cpf)}` : "CPF não informado", m.cnh ? `CNH ${m.cnh}` : "CNH —"].join("  ·  ");
+                  const sub = [m.cpf ? `CPF ${cpfFmt(m.cpf)}` : "CPF não informado", m.telefone ? `📞 ${telFmt(m.telefone)}` : null, m.cnh ? `CNH ${m.cnh}` : null].filter(Boolean).join("  ·  ");
                   return (
                     <div key={m.id} className="cad-row">
                       <span style={{ flexShrink: 0, width: 38, height: 38, borderRadius: "50%", background: p.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -504,13 +541,25 @@ export default function CadastrosPage() {
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <div>
-                      <label htmlFor="novo-cpf" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>CPF</label>
-                      <input id="novo-cpf" className="cad-inp" style={{ ...input, fontFamily: MONO }} value={cpf} onChange={(e) => setCpf(e.target.value.replace(/\D/g, ""))} maxLength={11} placeholder="000.000.000-00" />
+                      <label htmlFor="novo-cpf" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>CPF <span style={{ color: VINHO }}>*</span></label>
+                      <input id="novo-cpf" className="cad-inp" inputMode="numeric" aria-invalid={cpf.length === 11 && !validarCpf(cpf)}
+                        style={{ ...input, fontFamily: MONO }} value={cpf} onChange={(e) => setCpf(e.target.value.replace(/\D/g, ""))} maxLength={11} required placeholder="Somente números" />
+                      {cpf.length === 11 && !validarCpf(cpf) && (
+                        <span style={{ fontSize: 11, color: VERMELHO, display: "block", marginTop: 3 }}>CPF inválido</span>
+                      )}
                     </div>
                     <div>
-                      <label htmlFor="novo-cnh" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>CNH</label>
-                      <input id="novo-cnh" className="cad-inp" style={{ ...input, fontFamily: MONO }} value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="0000000000" />
+                      <label htmlFor="novo-telefone" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>Telefone <span style={{ color: VINHO }}>*</span></label>
+                      <input id="novo-telefone" className="cad-inp" inputMode="numeric" aria-invalid={telefone.length > 0 && !telefoneValido(telefone)}
+                        style={{ ...input, fontFamily: MONO }} value={telefone} onChange={(e) => setTelefone(e.target.value.replace(/\D/g, ""))} maxLength={11} required placeholder="DDD + número" />
+                      {telefone.length > 0 && !telefoneValido(telefone) && (
+                        <span style={{ fontSize: 11, color: VERMELHO, display: "block", marginTop: 3 }}>Use DDD + número (10 ou 11 dígitos)</span>
+                      )}
                     </div>
+                  </div>
+                  <div>
+                    <label htmlFor="novo-cnh" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>CNH</label>
+                    <input id="novo-cnh" className="cad-inp" style={{ ...input, fontFamily: MONO }} value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="0000000000 (opcional)" />
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11.5, color: "#6B6E76", lineHeight: 1.5 }}>
                     <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 14, marginTop: 1, flexShrink: 0 }} />CPF e CNH são opcionais, mas ajudam a identificar o motorista nos relatórios e a evitar duplicidade.

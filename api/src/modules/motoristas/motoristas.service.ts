@@ -69,6 +69,7 @@ export class MotoristasService {
     const motorista = await this.repo(tenantId).save({
       nome:        dto.nome,
       cpf:         dto.cpf,
+      telefone:    dto.telefone,
       cnh:         dto.cnh,
       categoriaCnh: dto.categoriaCnh,
       ativo:       true,
