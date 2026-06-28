@@ -293,6 +293,12 @@ export default function CadastrosPage() {
   }, []);
 
   useEffect(() => {
+    // Deep-link: /cadastros?tela=vei abre direto a aba Veículos
+    try {
+      const t = new URLSearchParams(window.location.search).get("tela");
+      if (t === "vei" || t === "mot") setTela(t);
+    } catch { /* ignora */ }
+
     const sessao = carregarSessao();
     if (sessao?.token) {
       setToken(sessao.token);

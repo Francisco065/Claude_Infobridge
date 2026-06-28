@@ -5,6 +5,7 @@ import { apiLogin, apiFetch, salvarSessao, carregarSessao, limparSessao } from "
 
 // ── Paleta ────────────────────────────────────────────────────
 const VINHO = "#6E1414";
+const AZUL = "#3A5BA0";
 const VERDE = "#16A34A";
 const AMARELO = "#D97706";
 const VERMELHO = "#DC2626";
@@ -374,6 +375,15 @@ export default function InfoAnalisePage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [tooltipAcel, setTooltipAcel] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
+
+  // Fecha o menu de navegação ao pressionar Esc
+  useEffect(() => {
+    if (!menuAberto) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuAberto(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuAberto]);
 
   const buscarIndicadores = useCallback(async (tk: string) => {
     setCarregando(true); setErro("");
@@ -458,13 +468,52 @@ export default function InfoAnalisePage() {
         borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", overflow: "hidden",
       }}>
         {/* Cabeçalho */}
-        <div className="ib-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <LogoInfobridge height={38} />
-            <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 14 }}>
-              <p style={{ fontSize: 8, letterSpacing: 2.4, color: VINHO, textTransform: "uppercase", margin: 0 }}>Infobridge</p>
-              <h1 style={{ fontSize: 16, fontWeight: 700, color: "#1F2024", margin: "2px 0 0" }}>Info Análise</h1>
+        <div className="ib-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2", position: "relative", zIndex: 30 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <LogoInfobridge height={38} />
+              <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 14 }}>
+                <p style={{ fontSize: 8, letterSpacing: 2.4, color: VINHO, textTransform: "uppercase", margin: 0 }}>Infobridge</p>
+                <h1 style={{ fontSize: 16, fontWeight: 700, color: "#1F2024", margin: "2px 0 0" }}>Info Análise</h1>
+              </div>
             </div>
+
+            {/* Navegação (mesma lógica do menu de Cadastros) */}
+            <nav style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
+                <i className="ti ti-chart-dots" aria-hidden style={{ fontSize: 16 }} />Info Análise
+              </span>
+
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", background: menuAberto ? "#EFF0F3" : "transparent", border: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: SANS }}>
+                  <i className="ti ti-folder" aria-hidden style={{ fontSize: 16 }} />Cadastros
+                  <i className={`ti ${menuAberto ? "ti-chevron-up" : "ti-chevron-down"}`} aria-hidden style={{ fontSize: 14, opacity: 0.7 }} />
+                </button>
+
+                {menuAberto && (
+                  <div role="menu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 248, background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13, boxShadow: "0 14px 38px rgba(30,32,40,.16)", padding: 6 }}>
+                    {[
+                      { href: "/cadastros", icon: "ti-id-badge-2", bg: "#F4EDED", cor: VINHO, titulo: "Motoristas", desc: "Criar, buscar e vincular" },
+                      { href: "/cadastros?tela=vei", icon: "ti-truck", bg: "#EEF0F6", cor: AZUL, titulo: "Veículos", desc: "Frota e quem dirige cada um" },
+                    ].map((it) => (
+                      <a key={it.href} href={it.href} role="menuitem"
+                        style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 11px", borderRadius: 10, textDecoration: "none" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#F6F2F2")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                        <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, background: it.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <i className={`ti ${it.icon}`} aria-hidden style={{ fontSize: 17, color: it.cor }} />
+                        </span>
+                        <span style={{ flex: 1 }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1F2024" }}>{it.titulo}</span>
+                          <span style={{ display: "block", fontSize: 11, color: "#8A8D96", marginTop: 1 }}>{it.desc}</span>
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </nav>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -477,6 +526,9 @@ export default function InfoAnalisePage() {
             </button>
           </div>
         </div>
+
+        {/* Backdrop de clique-fora do menu */}
+        {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 25, background: "transparent" }} />}
 
         {/* Faixa de filtros: seletor à esquerda, chips de identificação à direita */}
         <div className="ib-filtros" style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
