@@ -371,7 +371,8 @@ export default function InfoAnalisePage() {
   const [token, setToken] = useState<string | null>(null);
   const [nomeUsuario, setNomeUsuario] = useState("");
   const [indicadores, setIndicadores] = useState<any[]>([]);
-  const [selecionado, setSelecionado] = useState<any | null>(null);
+  const [motoristaSel, setMotoristaSel] = useState("");   // id do motorista
+  const [periodoSel, setPeriodoSel] = useState("");       // chave "inicio|fim"
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [tooltipAcel, setTooltipAcel] = useState(false);
@@ -389,8 +390,14 @@ export default function InfoAnalisePage() {
     setCarregando(true); setErro("");
     try {
       const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=50", tk);
-      setIndicadores(res.dados ?? []);
-      if (res.dados?.length) setSelecionado(res.dados[0]);
+      const dados = res.dados ?? [];
+      setIndicadores(dados);
+      // Padrão: primeiro motorista e seu período mais recente (API já vem por período DESC)
+      if (dados.length) {
+        const primeiro = dados[0];
+        setMotoristaSel(primeiro.motorista?.id ?? "");
+        setPeriodoSel(`${primeiro.periodoInicio}|${primeiro.periodoFim}`);
+      }
     } catch (e: any) {
       const msg = e.message ?? "Erro ao carregar indicadores";
       if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
@@ -417,7 +424,41 @@ export default function InfoAnalisePage() {
 
   if (!token) return <LoginForm onLogin={handleLogin} />;
 
-  const d = selecionado;
+  // ── Filtros derivados: Motorista e Período (independentes) ──
+  const motoristasOpc = (() => {
+    const vistos = new Set<string>();
+    const lista: { id: string; nome: string }[] = [];
+    for (const i of indicadores) {
+      const id = i.motorista?.id;
+      if (id && !vistos.has(id)) { vistos.add(id); lista.push({ id, nome: i.motorista?.nome ?? "—" }); }
+    }
+    return lista.sort((a, b) => a.nome.localeCompare(b.nome));
+  })();
+
+  const periodosOpc = (() => {
+    const vistos = new Set<string>();
+    const lista: { key: string; inicio: string; fim: string }[] = [];
+    for (const i of indicadores) {
+      if (i.motorista?.id !== motoristaSel) continue;
+      const key = `${i.periodoInicio}|${i.periodoFim}`;
+      if (!vistos.has(key)) { vistos.add(key); lista.push({ key, inicio: i.periodoInicio, fim: i.periodoFim }); }
+    }
+    return lista.sort((a, b) => (a.inicio < b.inicio ? 1 : -1)); // mais recente primeiro
+  })();
+
+  // Ao trocar de motorista, garante um período válido selecionado
+  function trocarMotorista(id: string) {
+    setMotoristaSel(id);
+    const doMot = indicadores
+      .filter((i) => i.motorista?.id === id)
+      .map((i) => `${i.periodoInicio}|${i.periodoFim}`)
+      .sort((a, b) => (a < b ? 1 : -1));
+    setPeriodoSel(doMot[0] ?? "");
+  }
+
+  const d = indicadores.find(
+    (i) => i.motorista?.id === motoristaSel && `${i.periodoInicio}|${i.periodoFim}` === periodoSel,
+  ) ?? null;
   const hoje = new Date().toLocaleDateString("pt-BR");
   // Período sem telemetria suficiente: nenhuma quilometragem registrada.
   const semDados = !!d && num(d.kmTotal) <= 0;
@@ -532,22 +573,40 @@ export default function InfoAnalisePage() {
 
         {/* Faixa de filtros: seletor à esquerda, chips de identificação à direita */}
         <div className="ib-filtros" style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <label htmlFor="ib-periodo" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
-            <select
-              id="ib-periodo"
-              value={selecionado ? indicadores.indexOf(selecionado) : 0}
-              onChange={e => setSelecionado(indicadores[Number(e.target.value)])}
-              className="ib-select"
-              style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS }}
-            >
-              {indicadores.length === 0 && <option>—</option>}
-              {indicadores.map((ind, i) => (
-                <option key={ind.id} value={i}>
-                  {ind.motorista?.nome ?? "—"} — {ind.periodoInicio} a {ind.periodoFim}
-                </option>
-              ))}
-            </select>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            {/* Filtro 1: Motorista */}
+            <div>
+              <label htmlFor="ib-motorista" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Motorista</label>
+              <select
+                id="ib-motorista"
+                value={motoristaSel}
+                onChange={(e) => trocarMotorista(e.target.value)}
+                className="ib-select"
+                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210 }}
+              >
+                {motoristasOpc.length === 0 && <option value="">—</option>}
+                {motoristasOpc.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro 2: Período */}
+            <div>
+              <label htmlFor="ib-periodo" style={{ fontSize: 11, color: "#6B6E76", textTransform: "uppercase", letterSpacing: 1.2, display: "block", marginBottom: 6 }}>Período</label>
+              <select
+                id="ib-periodo"
+                value={periodoSel}
+                onChange={(e) => setPeriodoSel(e.target.value)}
+                className="ib-select"
+                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210 }}
+              >
+                {periodosOpc.length === 0 && <option value="">—</option>}
+                {periodosOpc.map((p) => (
+                  <option key={p.key} value={p.key}>{ddmm(p.inicio)} a {ddmm(p.fim)}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {d && (
