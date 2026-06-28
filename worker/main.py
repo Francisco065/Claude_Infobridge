@@ -444,6 +444,40 @@ async def debug():
                 resultado[chave] = await db.fetchval(sql)
             except Exception as e:
                 resultado[chave] = f'ERRO: {e}'
+
+        # Quebra por veículo nas últimas 24h: leituras com RPM/acelerador e máximos.
+        # Útil para validar mudança de configuração de um veículo específico (ex.: QOD5557).
+        try:
+            linhas = await db.fetch(
+                """
+                SELECT v.placa,
+                       COUNT(*)                  AS leituras,
+                       COUNT(lt.rpm)             AS com_rpm,
+                       MAX(lt.rpm)               AS rpm_max,
+                       COUNT(lt.perc_acelerador) AS com_acelerador,
+                       MAX(lt.perc_acelerador)   AS acel_max,
+                       MAX(lt.ts)                AS ultima_leitura
+                FROM   leitura_telemetria lt
+                JOIN   veiculos v ON v.id = lt.veiculo_id
+                WHERE  lt.ts >= NOW() - INTERVAL '24 hours'
+                GROUP BY v.placa
+                ORDER BY v.placa
+                """
+            )
+            resultado['por_veiculo_24h'] = [
+                {
+                    'placa':          r['placa'],
+                    'leituras':       r['leituras'],
+                    'com_rpm':        r['com_rpm'],
+                    'rpm_max':        r['rpm_max'],
+                    'com_acelerador': r['com_acelerador'],
+                    'acel_max':       float(r['acel_max']) if r['acel_max'] is not None else None,
+                    'ultima_leitura': r['ultima_leitura'].isoformat() if r['ultima_leitura'] else None,
+                }
+                for r in linhas
+            ]
+        except Exception as e:
+            resultado['por_veiculo_24h'] = f'ERRO: {e}'
     finally:
         await db.close()
     return resultado
