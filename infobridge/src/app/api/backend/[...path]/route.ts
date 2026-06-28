@@ -48,7 +48,11 @@ export async function DELETE(
   try {
     const res = await fetch(target, { method: "DELETE", headers });
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    // 204/205 (e respostas sem corpo) não podem ter body — devolve status puro.
+    if (res.status === 204 || res.status === 205 || !text) {
+      return new NextResponse(null, { status: res.status === 204 || res.status === 205 ? res.status : 200 });
+    }
+    const data = JSON.parse(text);
     return NextResponse.json(data, { status: res.status });
   } catch (e: any) {
     return NextResponse.json({ mensagem: `Erro ao conectar com API: ${e?.message}` }, { status: 502 });
