@@ -29,15 +29,21 @@ clf = Classificador(cfg)
 
 # ── Helper: extrai valor de componente por lista de IDs (prioridade) ──
 
-def extrair_componente(componentes: list[dict], *ids: int) -> str | None:
+def extrair_componente(componentes: list[dict], *ids: int,
+                       permitir_zero: bool = False) -> str | None:
     """
     Busca o primeiro id encontrado na lista de componentes.
     Estratégia dual-track: primeiro CAN, depois OBD2, depois básico.
+
+    Por padrão descarta '0' (valor que muitos dispositivos usam para
+    "componente ausente"). Use permitir_zero=True quando 0 for um valor
+    legítimo do dado — ex.: pedal do acelerador solto (0%).
     """
+    proibidos = ('', 'null') if permitir_zero else ('', 'null', '0')
     index = {c['id']: c.get('valor') for c in componentes}
     for cid in ids:
         val = index.get(cid)
-        if val is not None and val not in ('', 'null', '0'):
+        if val is not None and val not in proibidos:
             return val
     return None
 
@@ -101,20 +107,18 @@ def processar_posicao(
         componentes,
         cfg.comp_acelerador_can,   # 9208 CAN
         cfg.comp_acelerador_obd2,  # 9445 OBD2
+        permitir_zero=True,        # pedal solto (0%) é valor legítimo, não "ausente"
     )
     perc_acelerador = parsear_float(acelerador_raw)
 
-    odometro_raw = extrair_componente(
-        componentes,
-        cfg.comp_odometro_can,   # 9088 CAN
-        cfg.comp_odometro_gps,   # 10   GPS
-    )
-    # Fallback para campo top-level odometroGps
-    if odometro_raw is None:
-        odometro_km = parsear_float(str(pos.get('odometroGps', '')))
-    else:
-        # Remover sufixo " KM" se existir
-        odometro_km = parsear_float(odometro_raw.replace(' KM', '').replace('KM', ''))
+    # Odômetro: usar SOMENTE o CAN (9088) — o hodômetro real do veículo.
+    # extrair_componente já descarta '0', então quando o CAN vem 0/ausente o valor
+    # fica None e o cálculo usa a última leitura CAN válida conhecida. Não misturamos
+    # com o odômetro do GPS (id 10), que tem escala totalmente diferente e fazia o
+    # valor oscilar entre o hodômetro real (~972k) e a distância do GPS (~33k).
+    odometro_raw = extrair_componente(componentes, cfg.comp_odometro_can)  # 9088 CAN
+    odometro_km = (parsear_float(odometro_raw.replace(' KM', '').replace('KM', ''))
+                   if odometro_raw else None)
 
     consumo_total = parsear_float(extrair_componente(
         componentes,
@@ -144,8 +148,8 @@ def processar_posicao(
     fonte_rpm        = 'CAN' if extrair_componente(componentes, cfg.comp_rpm_can) \
                        else ('OBD2' if extrair_componente(componentes, cfg.comp_rpm_obd2) \
                        else ('BASICO' if extrair_componente(componentes, cfg.comp_rpm_basico) else None))
-    fonte_acelerador = 'CAN' if extrair_componente(componentes, cfg.comp_acelerador_can) \
-                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2) else None)
+    fonte_acelerador = 'CAN' if extrair_componente(componentes, cfg.comp_acelerador_can, permitir_zero=True) \
+                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2, permitir_zero=True) else None)
 
     return {
         'tenant_id':        tenant_id,
