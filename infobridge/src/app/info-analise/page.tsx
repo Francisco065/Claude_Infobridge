@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiLogin, apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
+import { apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
+import LoginForm from "@/components/LoginForm";
 
 // ── Paleta ────────────────────────────────────────────────────
 const VINHO = "#6E1414";
@@ -322,58 +323,6 @@ function LogoInfobridge({ height = 38 }: { height?: number }) {
   );
 }
 
-// ── Tela de login (tema claro) ────────────────────────────────
-function LoginForm({ onLogin }: { onLogin: (token: string, nome: string) => void }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setCarregando(true); setErro("");
-    try {
-      const { accessToken, usuario } = await apiLogin(email, senha);
-      onLogin(accessToken, usuario.nome);
-    } catch (e: any) {
-      setErro(e?.message ?? "Erro ao conectar com o servidor.");
-    } finally {
-      setCarregando(false);
-    }
-  }
-
-  const input: React.CSSProperties = {
-    width: "100%", background: "#F6F7F9", border: "1px solid #E2E4E9", borderRadius: 10,
-    padding: "10px 12px", fontSize: 14, color: "#1F2024", fontFamily: SANS, outline: "none",
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#E9EBEF", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: SANS }}>
-      <div style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", padding: 32, width: "100%", maxWidth: 380 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 26 }}>
-          <LogoInfobridge height={40} />
-          <div style={{ borderLeft: "1px solid #E2E4E9", paddingLeft: 12 }}>
-            <p style={{ fontSize: 8, letterSpacing: 2.4, color: VINHO, textTransform: "uppercase", margin: 0 }}>Infobridge</p>
-            <p style={{ fontSize: 16, fontWeight: 700, color: "#1F2024", margin: "2px 0 0" }}>Info Análise</p>
-          </div>
-        </div>
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label htmlFor="ib-email" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>E-mail</label>
-            <input id="ib-email" style={input} type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <label htmlFor="ib-senha" style={{ fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 }}>Senha</label>
-            <input id="ib-senha" style={input} type="password" autoComplete="current-password" value={senha} onChange={e => setSenha(e.target.value)} required />
-          </div>
-          {erro && <p role="alert" aria-live="assertive" style={{ color: VERMELHO, fontSize: 12, margin: 0 }}>{erro}</p>}
-          <button style={{ width: "100%", background: VINHO, color: "#fff", borderRadius: 10, padding: "11px", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer", opacity: carregando ? 0.6 : 1 }}
-            disabled={carregando}>{carregando ? "Entrando..." : "Entrar"}</button>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 // ── Página principal ──────────────────────────────────────────
 export default function InfoAnalisePage() {
