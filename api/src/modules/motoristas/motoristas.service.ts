@@ -113,6 +113,24 @@ export class MotoristasService {
         tenantId, motoristaId, veiculoId: dto.veiculoId, inicio, fim: null, fonte: FonteVinculo.MANUAL,
       });
       await manager.save(vinculo);
+
+      // Re-atribuição retroativa: aplica o motorista correto às leituras já
+      // gravadas do veículo a partir do início do vínculo. Assim a telemetria
+      // coletada "órfã" (motorista nulo) ou de um vínculo anterior passa a ser
+      // do motorista certo, e o recálculo gera a nota correta — sem perda de dados.
+      // fn_motorista_em já enxerga o vínculo recém-criado (mesma transação).
+      await manager.query(
+        `UPDATE leitura_telemetria
+            SET motorista_id = fn_motorista_em(tenant_id, veiculo_id, ts)
+          WHERE tenant_id = $1::uuid AND veiculo_id = $2::uuid AND ts >= $3`,
+        [tenantId, dto.veiculoId, inicio],
+      );
+
+      this.logger.log(
+        `Vínculo ${motorista.nome} ↔ ${veiculo.placa ?? dto.veiculoId} desde ${inicio.toISOString()} ` +
+        `(re-atribuição de telemetria aplicada)`,
+      );
+
       return vinculo;
     });
   }

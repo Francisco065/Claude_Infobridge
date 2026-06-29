@@ -260,6 +260,7 @@ export default function CadastrosPage() {
   const [selVeiculo, setSelVeiculo] = useState("");
   const [vincVeiId, setVincVeiId] = useState<string | null>(null);
   const [selMotorista, setSelMotorista] = useState("");
+  const [vinculoDesde, setVinculoDesde] = useState(""); // data retroativa (YYYY-MM-DD); vazio = agora
   const [ocupado, setOcupado] = useState(false);
 
   const sair = useCallback(() => { limparSessao(); setToken(null); }, []);
@@ -397,9 +398,15 @@ export default function CadastrosPage() {
     if (!token || !motoId || !veiId) return;
     setOcupado(true); setErro(""); setAviso("");
     try {
-      await apiPost(`/motoristas/${motoId}/vincular`, token, { veiculoId: veiId });
-      setAviso(`${nomeMoto} vinculado ao veículo ${placa}. A telemetria a partir de agora será atribuída a ele.`);
-      setVincMotoId(null); setSelVeiculo(""); setVincVeiId(null); setSelMotorista("");
+      const body: Record<string, string> = { veiculoId: veiId };
+      // Vínculo retroativo: se houver data escolhida, a telemetria já gravada a
+      // partir dela é re-atribuída a este motorista (backend faz a re-atribuição).
+      if (vinculoDesde) body.inicio = new Date(`${vinculoDesde}T00:00:00`).toISOString();
+      await apiPost(`/motoristas/${motoId}/vincular`, token, body);
+      setAviso(vinculoDesde
+        ? `${nomeMoto} vinculado ao veículo ${placa} desde ${vinculoDesde.split("-").reverse().join("/")}. A telemetria desse período foi atribuída a ele.`
+        : `${nomeMoto} vinculado ao veículo ${placa}. A telemetria a partir de agora será atribuída a ele.`);
+      setVincMotoId(null); setSelVeiculo(""); setVincVeiId(null); setSelMotorista(""); setVinculoDesde("");
       await carregar(token);
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao vincular");
@@ -627,6 +634,10 @@ export default function CadastrosPage() {
                                 ))}
                               </select>
                             </div>
+                            <div style={{ position: "relative" }} title="Vínculo válido desde (opcional) — para vinculação retroativa">
+                              <label htmlFor={`desde-v-${m.id}`} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Vínculo válido desde</label>
+                              <input id={`desde-v-${m.id}`} type="date" value={vinculoDesde} onChange={(e) => setVinculoDesde(e.target.value)} max={new Date().toISOString().slice(0, 10)} style={{ ...inp, padding: "7px 10px", fontSize: 12, width: 150, cursor: "pointer" }} />
+                            </div>
                             <button onClick={() => vincular(m.id, selVeiculo, m.nome, veiculos.find((v) => v.id === selVeiculo)?.placa ?? "veículo")} disabled={ocupado || !selVeiculo} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: VINHO, border: "none", borderRadius: 8, padding: "7px 12px", cursor: ocupado || !selVeiculo ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 600, fontFamily: SANS, opacity: ocupado || !selVeiculo ? 0.55 : 1 }}>
                               <i className="ti ti-link" aria-hidden="true" style={{ fontSize: 14 }} />Vincular
                             </button>
@@ -705,6 +716,10 @@ export default function CadastrosPage() {
                                   <option key={m.id} value={m.id}>{m.nome}</option>
                                 ))}
                               </select>
+                            </div>
+                            <div style={{ position: "relative" }} title="Vínculo válido desde (opcional) — para vinculação retroativa">
+                              <label htmlFor={`desde-m-${v.id}`} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Vínculo válido desde</label>
+                              <input id={`desde-m-${v.id}`} type="date" value={vinculoDesde} onChange={(e) => setVinculoDesde(e.target.value)} max={new Date().toISOString().slice(0, 10)} style={{ ...inp, padding: "7px 10px", fontSize: 12, width: 150, cursor: "pointer" }} />
                             </div>
                             <button onClick={() => vincular(selMotorista, v.id, motoristas.find((m) => m.id === selMotorista)?.nome ?? "Motorista", v.placa ?? "veículo")} disabled={ocupado || !selMotorista} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: VINHO, border: "none", borderRadius: 8, padding: "7px 12px", cursor: ocupado || !selMotorista ? "default" : "pointer", fontSize: 12, color: "#fff", fontWeight: 600, fontFamily: SANS, opacity: ocupado || !selMotorista ? 0.55 : 1 }}>
                               <i className="ti ti-link" aria-hidden="true" style={{ fontSize: 14 }} />Vincular
