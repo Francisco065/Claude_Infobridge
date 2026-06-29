@@ -14,6 +14,7 @@ import asyncio
 import base64
 import csv
 import io
+import json
 import logging
 import os
 import signal
@@ -145,6 +146,9 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                 r = processar_posicao(row['veiculo_id'], row['motorista_id'],
                                       tenant['tenant_id'], pos)
                 if r:
+                    # Guarda o array de componentes CRU (como a Multiportal envia),
+                    # para comparação 1:1 com o que extraímos. Diagnóstico.
+                    r['componentes_raw'] = json.dumps(pos.get('componentes') or [], ensure_ascii=False)
                     registros.append(r)
 
             if registros:
@@ -157,13 +161,14 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                         rpm, perc_acelerador, odometro_km, consumo_total_l,
                         consumo_inst_l, ignicao, cruise_ctrl, pedal_freio,
                         embreagem, faixa_rpm, faixa_acelerador,
-                        is_motor_ocioso, is_embalo, fonte_rpm, fonte_acelerador
+                        is_motor_ocioso, is_embalo, fonte_rpm, fonte_acelerador,
+                        componentes_raw
                     ) VALUES (
                         $1::uuid, $2::uuid, $3::uuid,
                         to_timestamp($4), to_timestamp($5),
                         $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
                         $16, $17, $18, $19, $20, $21, $22, $23, $24,
-                        $25, $26, $27, $28, $29, $30
+                        $25, $26, $27, $28, $29, $30, $31::jsonb
                     ) ON CONFLICT (tenant_id, veiculo_id, ts) DO NOTHING
                     """,
                     [(
@@ -177,6 +182,7 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                         r['embreagem'], r['faixa_rpm'], r['faixa_acelerador'],
                         r['is_motor_ocioso'], r['is_embalo'],
                         r['fonte_rpm'], r['fonte_acelerador'],
+                        r['componentes_raw'],
                     ) for r in registros],
                 )
                 total += len(registros)
@@ -429,6 +435,68 @@ async def export_telemetria(placa: str = 'QOD5557', inicio_h: int = 5, fim_h: in
         headers={'Content-Disposition': f'attachment; filename="{nome}"',
                  'X-Total-Linhas': str(len(rows))},
     )
+
+
+@api.get('/debug/export-bruto')
+async def export_bruto(placa: str = 'QOD5557', inicio_h: int = 5, fim_h: int = 12):
+    """
+    Exporta em JSON, por posição, o ARRAY DE COMPONENTES CRU (como a Multiportal
+    envia) ao lado do que o sistema EXTRAIU (rpm, acelerador, odômetro...). Permite
+    ver 1:1 se estamos descartando algum dado. Só captura posições gravadas APÓS o
+    deploy desta versão (a coluna componentes_raw começa a ser preenchida agora).
+    Default: QOD5557, 05h–12h de hoje (BRT).
+    """
+    brt = timezone(timedelta(hours=-3))
+    agora = datetime.now(timezone.utc).astimezone(brt)
+    ini = datetime(agora.year, agora.month, agora.day, inicio_h, 0, tzinfo=brt)
+    fim = datetime(agora.year, agora.month, agora.day, fim_h, 0, tzinfo=brt)
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        rows = await db.fetch(
+            """
+            SELECT lt.ts, lt.velocidade, lt.rpm, lt.perc_acelerador, lt.odometro_km,
+                   lt.consumo_total_l, lt.ignicao, lt.faixa_rpm, lt.faixa_acelerador,
+                   lt.componentes_raw
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 AND lt.ts < $3
+            ORDER BY lt.ts
+            """,
+            placa, ini, fim,
+        )
+    finally:
+        await db.close()
+
+    saida = []
+    com_raw = 0
+    for r in rows:
+        raw = r['componentes_raw']
+        if raw is not None:
+            com_raw += 1
+            if isinstance(raw, str):
+                try: raw = json.loads(raw)
+                except Exception: pass
+        saida.append({
+            'ts_brt': r['ts'].astimezone(brt).strftime('%d/%m/%Y %H:%M:%S') if r['ts'] else None,
+            'extraido': {
+                'velocidade': r['velocidade'], 'rpm': r['rpm'],
+                'perc_acelerador': float(r['perc_acelerador']) if r['perc_acelerador'] is not None else None,
+                'odometro_km': float(r['odometro_km']) if r['odometro_km'] is not None else None,
+                'consumo_total_l': float(r['consumo_total_l']) if r['consumo_total_l'] is not None else None,
+                'ignicao': r['ignicao'], 'faixa_rpm': r['faixa_rpm'], 'faixa_acelerador': r['faixa_acelerador'],
+            },
+            'componentes_bruto': raw,
+        })
+
+    payload = json.dumps({
+        'placa': placa, 'intervalo': f'{inicio_h:02d}h-{fim_h:02d}h BRT',
+        'total_posicoes': len(rows), 'posicoes_com_bruto': com_raw,
+        'posicoes': saida,
+    }, ensure_ascii=False, indent=2)
+    nome = f'{placa}_{agora.strftime("%Y%m%d")}_bruto.json'
+    return Response(content=payload, media_type='application/json; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="{nome}"'})
 
 
 @api.get('/debug/componentes')

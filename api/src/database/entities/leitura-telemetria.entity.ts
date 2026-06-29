@@ -206,6 +206,10 @@ export class LeituraTelemetria {
   @Column({ name: 'fonte_acelerador', length: 10, nullable: true })
   fonteAcelerador: string;
 
+  /** Array de componentes CRU como a Multiportal envia (diagnóstico/comparação). */
+  @Column({ name: 'componentes_raw', type: 'jsonb', nullable: true })
+  componentesRaw: any;
+
   @Column({ name: 'ingerido_em', type: 'timestamptz', default: () => 'NOW()' })
   ingeridoEm: Date;
 }
