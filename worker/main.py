@@ -12,19 +12,21 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import csv
+import io
 import logging
 import os
 import signal
 import sys
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import asyncpg
 import httpx
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel
 
 from config import get_settings
@@ -359,6 +361,74 @@ async def vincular_telemetria():
         return {'status': 'ok', 'leituras_atualizadas': atualizadas}
     finally:
         await db.close()
+
+
+@api.get('/debug/export')
+async def export_telemetria(placa: str = 'QOD5557', inicio_h: int = 5, fim_h: int = 12):
+    """
+    Exporta em CSV toda a telemetria que o sistema tem de um veículo num
+    intervalo de horas DE HOJE (horário de Brasília, UTC-3). Default: QOD5557, 05h–12h.
+    Ex.: /debug/export?placa=QOD5557&inicio_h=5&fim_h=12
+    """
+    brt = timezone(timedelta(hours=-3))
+    agora = datetime.now(timezone.utc).astimezone(brt)
+    ini = datetime(agora.year, agora.month, agora.day, inicio_h, 0, tzinfo=brt)
+    fim = datetime(agora.year, agora.month, agora.day, fim_h, 0, tzinfo=brt)
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        rows = await db.fetch(
+            """
+            SELECT lt.ts, lt.evento_id, lt.gps_valido, lt.latitude, lt.longitude,
+                   lt.velocidade, lt.rpm, lt.perc_acelerador, lt.odometro_km,
+                   lt.consumo_total_l, lt.consumo_inst_l, lt.ignicao,
+                   lt.cruise_ctrl, lt.pedal_freio, lt.embreagem,
+                   lt.faixa_rpm, lt.faixa_acelerador, lt.is_motor_ocioso, lt.is_embalo,
+                   lt.fonte_rpm, lt.fonte_acelerador, lt.motorista_id::text AS motorista_id,
+                   lt.endereco
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 AND lt.ts < $3
+            ORDER BY lt.ts
+            """,
+            placa, ini, fim,
+        )
+    finally:
+        await db.close()
+
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=';')
+    cols = [
+        'ts_brt', 'ts_utc', 'evento_id', 'gps_valido', 'latitude', 'longitude',
+        'velocidade', 'rpm', 'perc_acelerador', 'odometro_km',
+        'consumo_total_l', 'consumo_inst_l', 'ignicao', 'cruise_ctrl',
+        'pedal_freio', 'embreagem', 'faixa_rpm', 'faixa_acelerador',
+        'is_motor_ocioso', 'is_embalo', 'fonte_rpm', 'fonte_acelerador',
+        'motorista_id', 'endereco',
+    ]
+    w.writerow(cols)
+    for r in rows:
+        ts = r['ts']
+        w.writerow([
+            ts.astimezone(brt).strftime('%d/%m/%Y %H:%M:%S') if ts else '',
+            ts.astimezone(timezone.utc).isoformat() if ts else '',
+            r['evento_id'], r['gps_valido'], r['latitude'], r['longitude'],
+            r['velocidade'], r['rpm'], r['perc_acelerador'], r['odometro_km'],
+            r['consumo_total_l'], r['consumo_inst_l'], r['ignicao'], r['cruise_ctrl'],
+            r['pedal_freio'], r['embreagem'], r['faixa_rpm'], r['faixa_acelerador'],
+            r['is_motor_ocioso'], r['is_embalo'], r['fonte_rpm'], r['fonte_acelerador'],
+            r['motorista_id'], r['endereco'],
+        ])
+
+    nome = f'{placa}_{agora.strftime("%Y%m%d")}_{inicio_h:02d}-{fim_h:02d}h.csv'
+    # BOM para o Excel abrir os acentos corretamente
+    conteudo = '﻿' + buf.getvalue()
+    return Response(
+        content=conteudo,
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{nome}"',
+                 'X-Total-Linhas': str(len(rows))},
+    )
 
 
 @api.get('/debug/componentes')
