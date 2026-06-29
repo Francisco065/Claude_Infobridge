@@ -69,6 +69,22 @@ type VeiculoNorm = {
 const iniciais = (n?: string | null) =>
   n ? n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "—";
 
+// ISO "2026-06-29T15:02:51.000Z" → "29/06/2026 12:02" (fuso de São Paulo)
+const fmtDataBR = (iso?: string | null): string => {
+  if (!iso || iso === "—") return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  }).replace(",", "");
+};
+
+// Link para a última localização no Google Maps
+const linkGoogleMaps = (lat: number, lng: number) =>
+  `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
 const nomeMotorista = (v: Veiculo): string | null => {
   const m = v.motorista;
   if (!m) return null;
@@ -607,7 +623,23 @@ export default function MapaAoVivoPage() {
                   <div style={{ background: "#F6F7F9", borderRadius: 10, padding: "9px 11px" }}><div style={{ fontSize: 10.5, color: "#9A9DA4", display: "flex", alignItems: "center", gap: 4 }}><i className="ti ti-engine" aria-hidden="true" style={{ fontSize: 13 }} />RPM</div><div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: "#1F2024", marginTop: 2 }}>{pv.rpm.toLocaleString("pt-BR")}</div></div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "#8A8D96" }}><i className="ti ti-clock" aria-hidden="true" style={{ fontSize: 14 }} />Última comunicação: <span style={{ color: "#5A5D65", fontWeight: 600 }}>{pv.ultima}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: "#8A8D96", flexWrap: "wrap" }}>
+                  <i className="ti ti-clock" aria-hidden="true" style={{ fontSize: 14 }} />Última comunicação:{" "}
+                  {pv.lat != null && pv.lng != null ? (
+                    <a
+                      href={linkGoogleMaps(pv.lat, pv.lng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir a última localização no Google Maps"
+                      style={{ color: "#2563EB", fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
+                    >
+                      {fmtDataBR(pv.ultima)}
+                      <i className="ti ti-external-link" aria-hidden="true" style={{ fontSize: 13 }} />
+                    </a>
+                  ) : (
+                    <span style={{ color: "#5A5D65", fontWeight: 600 }}>{fmtDataBR(pv.ultima)}</span>
+                  )}
+                </div>
               </div>
               <a href={`/info-analise?veiculo=${encodeURIComponent(pv.id)}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: 11, borderTop: "1px solid #EEF0F3", background: "#FAFBFC", color: VINHO, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>Ver no Info Análise<i className="ti ti-arrow-right" aria-hidden="true" style={{ fontSize: 16 }} /></a>
             </div>
