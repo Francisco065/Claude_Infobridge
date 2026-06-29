@@ -402,9 +402,18 @@ export default function InfoAnalisePage() {
       const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=1000", tk);
       const dados = res.dados ?? [];
       setIndicadores(dados);
-      // Padrão: primeiro motorista (período é resolvido automaticamente no render)
+      // Padrão: primeiro motorista (período resolvido no render).
+      // Deep-link: /info-analise?veiculo=<id> pré-seleciona o motorista desse veículo.
       if (dados.length) {
-        setMotoristaSel(dados[0].motorista?.id ?? "");
+        let motoristaAlvo = dados[0].motorista?.id ?? "";
+        try {
+          const veic = new URLSearchParams(window.location.search).get("veiculo");
+          if (veic) {
+            const m = dados.find((i) => i.veiculo?.id === veic)?.motorista?.id;
+            if (m) motoristaAlvo = m;
+          }
+        } catch { /* ignora */ }
+        setMotoristaSel(motoristaAlvo);
         setPeriodoSel("");
       }
     } catch (e: any) {
