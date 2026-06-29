@@ -17,6 +17,65 @@ export class VeiculosService {
     return new TenantAwareRepository(Veiculo, this.db, tenantId);
   }
 
+  /**
+   * Última posição/telemetria de cada veículo ativo do tenant (mapa ao vivo).
+   * Read-only: pega a leitura mais recente por veículo (LATERAL) + motorista
+   * vinculado ativo. Status derivado de velocidade/ignição.
+   * Combustível ainda não é ingerido → vai null (a UI não dispara "pane seca").
+   */
+  async aoVivo(tenantId: string) {
+    const rows = await this.db.query(
+      `
+      SELECT v.id, v.placa, v.marca, v.modelo, v.frota,
+             lt.latitude, lt.longitude, lt.velocidade, lt.rpm, lt.ignicao,
+             lt.ts AS ultima_comunicacao,
+             CASE
+               WHEN lt.ts IS NULL              THEN 'MOTOR_DESLIGADO'
+               WHEN COALESCE(lt.velocidade,0) > 0 THEN 'EM_MOVIMENTO'
+               WHEN lt.ignicao = true          THEN 'MOTOR_LIGADO_PARADO'
+               ELSE 'MOTOR_DESLIGADO'
+             END AS status,
+             m.id AS motorista_id, m.nome AS motorista_nome
+      FROM   veiculos v
+      LEFT JOIN LATERAL (
+        SELECT latitude, longitude, velocidade, rpm, ignicao, ts
+        FROM   leitura_telemetria
+        WHERE  veiculo_id = v.id
+        ORDER BY ts DESC
+        LIMIT 1
+      ) lt ON true
+      LEFT JOIN vinculo_motorista_veiculo vmv
+             ON vmv.veiculo_id = v.id AND vmv.fim IS NULL
+      LEFT JOIN motoristas m ON m.id = vmv.motorista_id
+      WHERE  v.tenant_id = $1 AND v.ativo = true
+      ORDER BY v.placa
+      `,
+      [tenantId],
+    );
+
+    const num = (x: any) => (x === null || x === undefined ? null : Number(x));
+
+    const dados = rows.map((r: any) => ({
+      id:        r.id,
+      placa:     r.placa,
+      marca:     r.marca,
+      modelo:    r.modelo,
+      frota:     r.frota,
+      grupoId:   r.frota || 'sem-grupo',
+      grupoNome: r.frota || 'Sem frota',
+      motorista: r.motorista_id ? { id: r.motorista_id, nome: r.motorista_nome } : null,
+      status:    r.status,
+      latitude:  num(r.latitude),
+      longitude: num(r.longitude),
+      velocidade: num(r.velocidade),
+      rpm:       num(r.rpm),
+      combustivel: null, // ainda não ingerido (fase 2)
+      ultimaComunicacao: r.ultima_comunicacao ? new Date(r.ultima_comunicacao).toISOString() : null,
+    }));
+
+    return { dados };
+  }
+
   async listar(tenantId: string, filtro: FiltroVeiculoDto) {
     const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
     const qb = this.repo(tenantId)

@@ -490,6 +490,9 @@ export default function CadastrosPage() {
                 <a href="/info-analise" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                   <i className="ti ti-chart-dots" aria-hidden="true" style={{ fontSize: 16 }} />Info Análise
                 </a>
+                <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                  <i className="ti ti-map-2" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo
+                </a>
 
                 <div style={{ position: "relative" }}>
                   <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}

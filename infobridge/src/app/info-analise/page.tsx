@@ -536,6 +536,10 @@ export default function InfoAnalisePage() {
                 <i className="ti ti-chart-dots" aria-hidden style={{ fontSize: 16 }} />Info Análise
               </span>
 
+              <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                <i className="ti ti-map-2" aria-hidden style={{ fontSize: 16 }} />Mapa ao vivo
+              </a>
+
               <div style={{ position: "relative" }}>
                 <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}
                   style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", background: menuAberto ? "#EFF0F3" : "transparent", border: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: SANS }}>

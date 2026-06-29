@@ -21,6 +21,12 @@ export class VeiculosController {
     return this.veiculosService.listar(tenantId, filtro);
   }
 
+  @Get('ao-vivo')
+  @ApiOperation({ summary: 'Última posição/telemetria de cada veículo (mapa ao vivo)' })
+  aoVivo(@TenantId() tenantId: string) {
+    return this.veiculosService.aoVivo(tenantId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe do veículo com motorista ativo' })
   buscar(@TenantId() tenantId: string, @Param('id') id: string) {
