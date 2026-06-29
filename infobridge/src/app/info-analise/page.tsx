@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch, salvarSessao, carregarSessao, limparSessao } from "@/lib/api";
+import { apiFetch, salvarSessao, carregarSessao, limparSessao, podeAcessar } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
 
 // ── Paleta ────────────────────────────────────────────────────
@@ -497,6 +497,11 @@ export default function InfoAnalisePage() {
               <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                 <i className="ti ti-map-2" aria-hidden style={{ fontSize: 16 }} />Mapa ao vivo
               </a>
+              {podeAcessar("usuarios") && (
+                <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                  <i className="ti ti-users" aria-hidden style={{ fontSize: 16 }} />Usuários
+                </a>
+              )}
 
               <div style={{ position: "relative" }}>
                 <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}

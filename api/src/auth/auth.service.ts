@@ -64,6 +64,7 @@ export class AuthService {
       usuario: {
         id: usuario.id, nome: usuario.nome, email: usuario.email,
         perfil: usuario.perfil, tenantId: usuario.tenantId,
+        acessoTotal: usuario.acessoTotal, telas: usuario.telas ?? [],
         tenant: { id: usuario.tenant?.id, nome: usuario.tenant?.nome },
       },
     };
@@ -143,6 +144,8 @@ export class AuthService {
     const payload = {
       sub: usuario.id, tenantId: usuario.tenantId,
       email: usuario.email, perfil: usuario.perfil, isSuperAdmin: false,
+      nome: usuario.nome,
+      acessoTotal: usuario.acessoTotal, telas: usuario.telas ?? [],
     };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, { expiresIn: this.config.get('JWT_EXPIRATION', '8h') }),

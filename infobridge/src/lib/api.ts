@@ -32,6 +32,39 @@ export function limparSessao() {
   } catch { /* ignora */ }
 }
 
+// ── Permissões (lidas do JWT da sessão) ───────────────────────
+export const TELAS = [
+  { key: "info-analise", label: "Info Análise", icone: "ti-chart-dots", href: "/info-analise" },
+  { key: "mapa-ao-vivo", label: "Mapa ao vivo", icone: "ti-map-2", href: "/mapa-ao-vivo" },
+  { key: "cadastros", label: "Cadastros", icone: "ti-folder", href: "/cadastros" },
+  { key: "usuarios", label: "Usuários", icone: "ti-users", href: "/usuarios" },
+] as const;
+
+export type Permissoes = { acessoTotal: boolean; telas: string[]; perfil?: string; nome?: string };
+
+export function permissoesDaSessao(): Permissoes {
+  const s = carregarSessao();
+  if (!s?.token) return { acessoTotal: false, telas: [] };
+  try {
+    const b64 = s.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const p = JSON.parse(decodeURIComponent(escape(window.atob(b64))));
+    return {
+      acessoTotal: !!p.acessoTotal,
+      telas: Array.isArray(p.telas) ? p.telas : [],
+      perfil: p.perfil,
+      nome: p.nome,
+    };
+  } catch {
+    return { acessoTotal: false, telas: [] };
+  }
+}
+
+// Admin do tenant e quem tem acessoTotal enxergam tudo; demais, só as telas liberadas.
+export function podeAcessar(tela: string): boolean {
+  const p = permissoesDaSessao();
+  return p.perfil === "admin" || p.acessoTotal || p.telas.includes(tela);
+}
+
 export async function apiLogin(email: string, senha: string) {
   const res = await fetch(`${PROXY}/auth/login`, {
     method: "POST",

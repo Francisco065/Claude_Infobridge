@@ -43,6 +43,14 @@ export class Usuario {
   })
   perfil: UsuarioPerfil;
 
+  /** Acesso geral: enxerga todas as telas (atuais e futuras). */
+  @Column({ name: 'acesso_total', default: false })
+  acessoTotal: boolean;
+
+  /** Telas liberadas quando acessoTotal=false (chaves: info-analise, mapa-ao-vivo, cadastros, usuarios). */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  telas: string[];
+
   @Column({ default: true })
   ativo: boolean;
 

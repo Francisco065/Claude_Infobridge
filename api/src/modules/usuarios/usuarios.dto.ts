@@ -1,6 +1,6 @@
 import {
   IsString, IsEmail, IsEnum, IsOptional, IsBoolean,
-  IsNotEmpty, MinLength, MaxLength, Matches, Length,
+  IsNotEmpty, MinLength, MaxLength, Matches, Length, IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UsuarioPerfil } from '../../database/entities/enums';
@@ -24,6 +24,14 @@ export class CriarUsuarioDto {
     message: 'Senha deve conter maiúscula, número e caractere especial',
   })
   senha: string;
+
+  @ApiPropertyOptional({ description: 'Acesso geral a todas as telas', default: false })
+  @IsOptional() @IsBoolean()
+  acessoTotal?: boolean;
+
+  @ApiPropertyOptional({ description: 'Telas liberadas (quando acessoTotal=false)', type: [String] })
+  @IsOptional() @IsArray() @IsString({ each: true })
+  telas?: string[];
 }
 
 export class AtualizarUsuarioDto {

@@ -51,6 +51,8 @@ export class UsuariosService {
     const usuario = await this.repo(tenantId).save({
       nome: dto.nome, email: dto.email.toLowerCase(), senhaHash,
       perfil: dto.perfil ?? UsuarioPerfil.OPERADOR, ativo: true,
+      acessoTotal: dto.acessoTotal ?? false,
+      telas: dto.acessoTotal ? [] : (dto.telas ?? []),
     });
 
     this.logger.log(`Usuário criado: ${usuario.email} [tenant: ${tenantId}]`);
