@@ -39,6 +39,10 @@ export class AtualizarUsuarioDto {
   @IsOptional() @IsString() @Length(2, 200)
   nome?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional() @IsEmail()
+  email?: string;
+
   @ApiPropertyOptional({ enum: UsuarioPerfil })
   @IsOptional() @IsEnum(UsuarioPerfil)
   perfil?: UsuarioPerfil;
@@ -46,6 +50,14 @@ export class AtualizarUsuarioDto {
   @ApiPropertyOptional()
   @IsOptional() @IsBoolean()
   ativo?: boolean;
+
+  @ApiPropertyOptional({ description: 'Acesso geral a todas as telas' })
+  @IsOptional() @IsBoolean()
+  acessoTotal?: boolean;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional() @IsArray() @IsString({ each: true })
+  telas?: string[];
 }
 
 export class RedefinirSenhaAdminDto {

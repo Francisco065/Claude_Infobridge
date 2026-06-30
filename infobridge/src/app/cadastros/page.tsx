@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  apiFetch, apiPost, apiDelete, podeAcessar,
+  apiFetch, apiPost, apiDelete, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin,
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
+import SemAcesso from "@/components/SemAcesso";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise) ───────
 const VINHO = "#6E1414";
@@ -380,6 +381,10 @@ export default function CadastrosPage() {
   }
 
   if (!token) return <LoginForm onLogin={handleLogin} />;
+  if (!podeAcessar("cadastros")) return <SemAcesso destino={primeiraTelaPermitida()} />;
+
+  // Operador/Somente leitura: apenas visualizam (não criam motorista nem vinculam).
+  const podeEditar = ehGestorOuAdmin();
 
   // ── Estilos reutilizados ────────────────────────────────────
   const cardLista: React.CSSProperties = {
@@ -449,7 +454,7 @@ export default function CadastrosPage() {
                 <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                   <i className="ti ti-map-2" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo
                 </a>
-                {podeAcessar("usuarios") && (
+                {ehGestorOuAdmin() && (
                   <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                     <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
                   </a>
@@ -533,9 +538,11 @@ export default function CadastrosPage() {
                     <h2 style={tituloSec}>Motoristas</h2>
                     <span style={contador}>{motoristasFiltrados.length}</span>
                   </div>
+                  {podeEditar && (
                   <button onClick={() => setModalAberto(true)} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: VINHO, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: SANS, whiteSpace: "nowrap", flexShrink: 0 }}>
                     <i className="ti ti-user-plus" aria-hidden="true" style={{ fontSize: 16 }} />Novo motorista
                   </button>
+                  )}
                 </div>
 
                 {carregando ? (
@@ -572,10 +579,14 @@ export default function CadastrosPage() {
                               <i className="ti ti-truck" aria-hidden="true" style={{ fontSize: 14, color: VINHO }} />
                               <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: "#33363D" }}>{veic.placa ?? "(sem placa)"}</span>
                             </span>
+                            {podeEditar && (
                             <button onClick={() => desvincular(m.id, m.nome)} disabled={ocupado} title="Desvincular" style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 8, padding: "6px 10px", cursor: ocupado ? "default" : "pointer", fontSize: 12, color: "#6B6E76", fontFamily: SANS, opacity: ocupado ? 0.6 : 1 }}>
                               <i className="ti ti-unlink" aria-hidden="true" style={{ fontSize: 14 }} />Desvincular
                             </button>
+                            )}
                           </div>
+                        ) : !podeEditar ? (
+                          <span style={{ fontSize: 12, color: "#8A8D96" }}>Sem veículo</span>
                         ) : vincMotoId === m.id ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <div style={{ position: "relative" }}>
@@ -655,10 +666,14 @@ export default function CadastrosPage() {
                               </span>
                               <span style={{ fontSize: 12, color: VINHO, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{moto.nome}</span>
                             </span>
+                            {podeEditar && (
                             <button onClick={() => desvincular(moto.id, moto.nome)} disabled={ocupado} title="Desvincular" style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 8, padding: "6px 10px", cursor: ocupado ? "default" : "pointer", fontSize: 12, color: "#6B6E76", fontFamily: SANS, opacity: ocupado ? 0.6 : 1 }}>
                               <i className="ti ti-unlink" aria-hidden="true" style={{ fontSize: 14 }} />Desvincular
                             </button>
+                            )}
                           </div>
+                        ) : !podeEditar ? (
+                          <span style={{ fontSize: 12, color: "#8A8D96" }}>Sem motorista</span>
                         ) : vincVeiId === v.id ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <div style={{ position: "relative" }}>

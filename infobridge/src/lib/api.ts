@@ -40,7 +40,7 @@ export const TELAS = [
   { key: "usuarios", label: "Usuários", icone: "ti-users", href: "/usuarios" },
 ] as const;
 
-export type Permissoes = { acessoTotal: boolean; telas: string[]; perfil?: string; nome?: string };
+export type Permissoes = { id?: string; acessoTotal: boolean; telas: string[]; perfil?: string; nome?: string };
 
 export function permissoesDaSessao(): Permissoes {
   const s = carregarSessao();
@@ -49,6 +49,7 @@ export function permissoesDaSessao(): Permissoes {
     const b64 = s.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const p = JSON.parse(decodeURIComponent(escape(window.atob(b64))));
     return {
+      id: p.sub,
       acessoTotal: !!p.acessoTotal,
       telas: Array.isArray(p.telas) ? p.telas : [],
       perfil: p.perfil,
@@ -63,6 +64,12 @@ export function permissoesDaSessao(): Permissoes {
 export function podeAcessar(tela: string): boolean {
   const p = permissoesDaSessao();
   return p.perfil === "admin" || p.acessoTotal || p.telas.includes(tela);
+}
+
+// Href da primeira tela que o usuário pode acessar (para redirecionamento/fallback).
+export function primeiraTelaPermitida(): string {
+  const t = TELAS.find((x) => podeAcessar(x.key));
+  return t?.href ?? "/info-analise";
 }
 
 export async function apiLogin(email: string, senha: string) {
@@ -93,6 +100,25 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json() as Promise<T>;
+}
+
+// Perfil é gestor ou admin (gerencia usuários, cadastros etc.)
+export function ehGestorOuAdmin(): boolean {
+  const p = permissoesDaSessao().perfil;
+  return p === "admin" || p === "gestor";
+}
+
+export async function apiPatch<T>(path: string, token: string, body: unknown): Promise<T> {
+  const res = await fetch(`${PROXY}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+  }
+  return res.json().catch(() => ({})) as Promise<T>;
 }
 
 export async function apiPost<T>(path: string, token: string, body: unknown): Promise<T> {

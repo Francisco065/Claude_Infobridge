@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  apiFetch, apiPost, salvarSessao, carregarSessao, limparSessao,
-  permissoesDaSessao, podeAcessar, TELAS,
+  apiFetch, apiPost, apiPatch, salvarSessao, carregarSessao, limparSessao,
+  permissoesDaSessao, podeAcessar, ehGestorOuAdmin, TELAS,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
 
@@ -35,8 +35,17 @@ type Usuario = {
 const iniciais = (n?: string) =>
   n ? n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "—";
 
-// Senha forte: maiúscula + número + caractere especial + 8+ (igual ao backend)
 const senhaForte = (s: string) => /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*]).{8,}$/.test(s);
+
+// Resumo de acesso: "Acesso geral" (admin/total) ou "X/4 telas" com tooltip.
+function resumoAcesso(u: Usuario): { texto: string; titulo: string } {
+  if (u.perfil === "admin" || u.acessoTotal) return { texto: "Acesso geral", titulo: "Todas as telas" };
+  const labels = (u.telas ?? []).map((k) => TELAS.find((t) => t.key === k)?.label ?? k);
+  return {
+    texto: `${labels.length}/${TELAS.length} telas`,
+    titulo: labels.length ? labels.join(", ") : "Nenhuma tela liberada",
+  };
+}
 
 // ── Logotipo ──────────────────────────────────────────────────
 function LogoInfobridge({ height = 34 }: { height?: number }) {
@@ -55,6 +64,113 @@ function LogoInfobridge({ height = 34 }: { height?: number }) {
   );
 }
 
+const inputBase: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E2E4E9",
+  borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, outline: "none",
+};
+const labelBase: React.CSSProperties = { fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 };
+
+// ── Formulário de usuário (criar e editar) ────────────────────
+function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
+  inicial?: Partial<Usuario>;
+  onSalvar: (dados: any) => void;
+  onCancelar?: () => void;
+  salvando: boolean;
+  modoEdicao: boolean;
+}) {
+  const [nome, setNome] = useState(inicial?.nome ?? "");
+  const [email, setEmail] = useState(inicial?.email ?? "");
+  const [senha, setSenha] = useState("");
+  const [perfil, setPerfil] = useState(inicial?.perfil ?? "operador");
+  const [modoAcesso, setModoAcesso] = useState<"geral" | "personalizado">(inicial?.acessoTotal ? "geral" : (inicial && !modoEdicao ? "geral" : (inicial?.acessoTotal === false ? "personalizado" : "geral")));
+  const [telasSel, setTelasSel] = useState<string[]>(inicial?.telas ?? []);
+  const [erro, setErro] = useState("");
+
+  const toggleTela = (k: string) => setTelasSel((p) => p.includes(k) ? p.filter((x) => x !== k) : [...p, k]);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErro("");
+    if (!modoEdicao && !senhaForte(senha)) {
+      setErro("Senha fraca: 8+ caracteres com maiúscula, número e caractere especial (!@#$%^&*).");
+      return;
+    }
+    if (modoEdicao && senha && !senhaForte(senha)) {
+      setErro("Senha fraca: 8+ caracteres com maiúscula, número e caractere especial (!@#$%^&*).");
+      return;
+    }
+    if (modoAcesso === "personalizado" && telasSel.length === 0) {
+      setErro("Escolha ao menos uma tela no acesso personalizado.");
+      return;
+    }
+    const dados: any = {
+      nome, email, perfil,
+      acessoTotal: modoAcesso === "geral",
+      telas: modoAcesso === "geral" ? [] : telasSel,
+    };
+    if (!modoEdicao) dados.senha = senha;
+    onSalvar(dados);
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {erro && <div role="alert" style={{ background: "#FDF1F1", border: "1px solid #E7B0AC", borderRadius: 10, padding: 10, color: VERMELHO, fontSize: 12 }}>{erro}</div>}
+      <div>
+        <label style={labelBase}>Nome <span style={{ color: VINHO }}>*</span></label>
+        <input style={inputBase} value={nome} onChange={(e) => setNome(e.target.value)} required minLength={2} placeholder="Maria Souza" />
+      </div>
+      <div>
+        <label style={labelBase}>E-mail <span style={{ color: VINHO }}>*</span></label>
+        <input type="email" autoComplete="off" style={inputBase} value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="maria@empresa.com" />
+      </div>
+      {!modoEdicao && (
+        <div>
+          <label style={labelBase}>Senha <span style={{ color: VINHO }}>*</span></label>
+          <input type="password" autoComplete="new-password" style={inputBase} value={senha} onChange={(e) => setSenha(e.target.value)} required placeholder="8+ com maiúscula, número e símbolo" />
+          {senha.length > 0 && !senhaForte(senha) && <span style={{ fontSize: 11, color: VERMELHO, display: "block", marginTop: 3 }}>Senha fraca</span>}
+        </div>
+      )}
+      <div>
+        <label style={labelBase}>Perfil</label>
+        <select style={inputBase} value={perfil} onChange={(e) => setPerfil(e.target.value)}>
+          {PERFIS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <span style={labelBase}>Acesso às telas <span style={{ color: VINHO }}>*</span></span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
+            <input type="radio" name={`acesso-${modoEdicao}`} checked={modoAcesso === "geral"} onChange={() => setModoAcesso("geral")} />
+            Acesso geral <span style={{ fontSize: 11, color: "#8A8D96" }}>(todas as telas)</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
+            <input type="radio" name={`acesso-${modoEdicao}`} checked={modoAcesso === "personalizado"} onChange={() => setModoAcesso("personalizado")} />
+            Personalizado <span style={{ fontSize: 11, color: "#8A8D96" }}>(escolher telas)</span>
+          </label>
+        </div>
+        {modoAcesso === "personalizado" && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7, padding: "10px 12px", background: "#F6F7F9", borderRadius: 10, border: "1px solid #E7E9ED" }}>
+            {TELAS.map((t) => (
+              <label key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
+                <input type="checkbox" checked={telasSel.includes(t.key)} onChange={() => toggleTela(t.key)} />
+                <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 15, color: VINHO }} />{t.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button disabled={salvando} style={{ flex: 1, background: VINHO, color: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 600, border: "none", cursor: salvando ? "default" : "pointer", opacity: salvando ? 0.6 : 1, fontFamily: SANS }}>
+          {salvando ? "Salvando…" : (modoEdicao ? "Salvar alterações" : "Criar usuário")}
+        </button>
+        {onCancelar && (
+          <button type="button" onClick={onCancelar} style={{ background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>Cancelar</button>
+        )}
+      </div>
+    </form>
+  );
+}
+
 // ── Página ────────────────────────────────────────────────────
 export default function UsuariosPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -63,15 +179,11 @@ export default function UsuariosPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
-
-  // Form
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [perfil, setPerfil] = useState("operador");
-  const [modoAcesso, setModoAcesso] = useState<"geral" | "personalizado">("geral");
-  const [telasSel, setTelasSel] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [editando, setEditando] = useState<Usuario | null>(null);
+
+  const eu = permissoesDaSessao();
+  const podeGerenciar = ehGestorOuAdmin();
 
   const carregar = useCallback(async (tk: string) => {
     setCarregando(true); setErro("");
@@ -102,44 +214,41 @@ export default function UsuariosPage() {
     if (podeAcessar("usuarios")) carregar(tk);
   }
 
-  function toggleTela(key: string) {
-    setTelasSel((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+  async function criar(dados: any) {
+    if (!token) return;
+    setSalvando(true); setErro(""); setAviso("");
+    try {
+      const novo = await apiPost<Usuario>("/usuarios", token, dados);
+      setAviso(`Usuário “${novo.nome}” criado.`);
+      await carregar(token);
+    } catch (e: any) { setErro(e?.message ?? "Erro ao criar usuário"); }
+    finally { setSalvando(false); }
   }
 
-  async function criarUsuario(e: React.FormEvent) {
-    e.preventDefault();
+  async function salvarEdicao(dados: any) {
+    if (!token || !editando) return;
+    setSalvando(true); setErro(""); setAviso("");
+    try {
+      await apiPatch(`/usuarios/${editando.id}`, token, dados);
+      setAviso(`Usuário “${dados.nome}” atualizado.`);
+      setEditando(null);
+      await carregar(token);
+    } catch (e: any) { setErro(e?.message ?? "Erro ao atualizar usuário"); }
+    finally { setSalvando(false); }
+  }
+
+  async function alternarAtivo(u: Usuario) {
     if (!token) return;
     setErro(""); setAviso("");
-    if (!senhaForte(senha)) {
-      setErro("Senha fraca: use 8+ caracteres com maiúscula, número e caractere especial (!@#$%^&*).");
-      return;
-    }
-    if (modoAcesso === "personalizado" && telasSel.length === 0) {
-      setErro("Escolha ao menos uma tela no acesso personalizado.");
-      return;
-    }
-    setSalvando(true);
     try {
-      const body = {
-        nome, email, senha, perfil,
-        acessoTotal: modoAcesso === "geral",
-        telas: modoAcesso === "geral" ? [] : telasSel,
-      };
-      const novo = await apiPost<Usuario>("/usuarios", token, body);
-      setAviso(`Usuário “${novo.nome}” criado.`);
-      setNome(""); setEmail(""); setSenha(""); setPerfil("operador");
-      setModoAcesso("geral"); setTelasSel([]);
+      await apiPatch(`/usuarios/${u.id}`, token, { ativo: u.ativo === false });
+      setAviso(`Usuário “${u.nome}” ${u.ativo === false ? "ativado" : "inativado"}.`);
       await carregar(token);
-    } catch (e: any) {
-      setErro(e?.message ?? "Erro ao criar usuário");
-    } finally {
-      setSalvando(false);
-    }
+    } catch (e: any) { setErro(e?.message ?? "Erro ao alterar status"); }
   }
 
   if (!token) return <LoginForm onLogin={handleLogin} />;
 
-  // Guarda de acesso
   if (!podeAcessar("usuarios")) {
     return (
       <div style={{ minHeight: "100vh", background: "#E9EBEF", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, padding: 24 }}>
@@ -153,12 +262,7 @@ export default function UsuariosPage() {
     );
   }
 
-  const navTelas = TELAS.filter((t) => podeAcessar(t.key));
-  const input: React.CSSProperties = {
-    width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E2E4E9",
-    borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, outline: "none",
-  };
-  const label: React.CSSProperties = { fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 };
+  const navTelas = TELAS.filter((t) => t.key !== "usuarios" && podeAcessar(t.key));
 
   return (
     <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 30, fontFamily: SANS }}>
@@ -175,12 +279,15 @@ export default function UsuariosPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#1F2024" }}>Usuários</div>
               </div>
             </div>
-            <nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <nav style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
               {navTelas.map((t) => (
-                <a key={t.key} href={t.href} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.key === "usuarios" ? VINHO : "#5A5D65", background: t.key === "usuarios" ? "#F6F2F2" : "transparent", fontWeight: t.key === "usuarios" ? 600 : 500, padding: "8px 12px", borderRadius: 9, textDecoration: "none" }}>
+                <a key={t.key} href={t.href} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, textDecoration: "none" }}>
                   <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
                 </a>
               ))}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
+                <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
+              </span>
             </nav>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -195,7 +302,7 @@ export default function UsuariosPage() {
         </div>
 
         <div style={{ background: "#F6F7F9", padding: 24, display: "grid", gridTemplateColumns: "1fr 360px", gap: 18, alignItems: "start" }}>
-          {/* Lista de usuários */}
+          {/* Lista */}
           <div>
             {erro && <div role="alert" style={{ background: "#FDF1F1", border: "1px solid #E7B0AC", borderRadius: 12, padding: 14, color: VERMELHO, fontSize: 13, marginBottom: 14 }}>{erro}</div>}
             {aviso && <div role="status" style={{ background: "#F0FAF3", border: "1px solid #B7E4C7", borderRadius: 12, padding: 14, color: VERDE, fontSize: 13, marginBottom: 14 }}>{aviso}</div>}
@@ -209,25 +316,34 @@ export default function UsuariosPage() {
               ) : (
                 <div>
                   {usuarios.map((u) => {
-                    const acesso = u.acessoTotal
-                      ? "Acesso geral"
-                      : (u.telas && u.telas.length
-                          ? u.telas.map((k) => TELAS.find((t) => t.key === k)?.label ?? k).join(", ")
-                          : "Sem telas");
+                    const a = resumoAcesso(u);
+                    const inativo = u.ativo === false;
                     return (
-                      <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: "1px solid #EEF0F3" }}>
+                      <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: "1px solid #EEF0F3", opacity: inativo ? 0.6 : 1 }}>
                         <span style={{ flexShrink: 0, width: 36, height: 36, borderRadius: "50%", background: "#F4EDED", color: VINHO, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, fontFamily: MONO }}>{iniciais(u.nome)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 600, color: "#1F2024" }}>{u.nome}</div>
                           <div style={{ fontSize: 12, color: "#6B6E76" }}>{u.email}</div>
-                          <div style={{ fontSize: 11, color: "#8A8D96", marginTop: 2 }}>
-                            <i className="ti ti-eye" aria-hidden="true" style={{ fontSize: 12, marginRight: 3 }} />{acesso}
+                          <div title={a.titulo} style={{ fontSize: 11, color: "#8A8D96", marginTop: 2, cursor: "help", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <i className="ti ti-eye" aria-hidden="true" style={{ fontSize: 12 }} />{a.texto}
                           </div>
                         </div>
                         <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "#6E5A14", background: "#F4EFE6", borderRadius: 999, padding: "3px 9px" }}>{perfilLabel(u.perfil)}</span>
-                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: u.ativo === false ? "#94A3B8" : VERDE }}>
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: u.ativo === false ? "#94A3B8" : VERDE }} />{u.ativo === false ? "Inativo" : "Ativo"}
+                        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: inativo ? "#94A3B8" : VERDE, minWidth: 56 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: inativo ? "#94A3B8" : VERDE }} />{inativo ? "Inativo" : "Ativo"}
                         </span>
+                        {podeGerenciar && (
+                          <div style={{ flexShrink: 0, display: "flex", gap: 4 }}>
+                            <button onClick={() => { setEditando(u); setAviso(""); setErro(""); }} title="Editar" aria-label="Editar usuário" style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: "#5A5D65", display: "flex" }}>
+                              <i className="ti ti-pencil" aria-hidden="true" style={{ fontSize: 14 }} />
+                            </button>
+                            {u.id !== eu.id && (
+                              <button onClick={() => alternarAtivo(u)} title={inativo ? "Ativar" : "Inativar"} aria-label={inativo ? "Ativar usuário" : "Inativar usuário"} style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: inativo ? VERDE : VERMELHO, display: "flex" }}>
+                                <i className={`ti ${inativo ? "ti-user-check" : "ti-user-off"}`} aria-hidden="true" style={{ fontSize: 14 }} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -236,61 +352,17 @@ export default function UsuariosPage() {
             </div>
           </div>
 
-          {/* Novo usuário */}
+          {/* Criar / Editar */}
           <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 18 }}>
             <h2 style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase", color: "#6B6E76", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 7 }}>
-              <i className="ti ti-user-plus" aria-hidden="true" style={{ fontSize: 15, color: VINHO }} />Novo usuário
+              <i className={`ti ${editando ? "ti-pencil" : "ti-user-plus"}`} aria-hidden="true" style={{ fontSize: 15, color: VINHO }} />
+              {editando ? `Editar: ${editando.nome}` : "Novo usuário"}
             </h2>
-            <form onSubmit={criarUsuario} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <label htmlFor="u-nome" style={label}>Nome <span style={{ color: VINHO }}>*</span></label>
-                <input id="u-nome" style={input} value={nome} onChange={(e) => setNome(e.target.value)} required minLength={2} placeholder="Maria Souza" />
-              </div>
-              <div>
-                <label htmlFor="u-email" style={label}>E-mail <span style={{ color: VINHO }}>*</span></label>
-                <input id="u-email" type="email" autoComplete="off" style={input} value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="maria@empresa.com" />
-              </div>
-              <div>
-                <label htmlFor="u-senha" style={label}>Senha <span style={{ color: VINHO }}>*</span></label>
-                <input id="u-senha" type="password" autoComplete="new-password" style={input} value={senha} onChange={(e) => setSenha(e.target.value)} required placeholder="8+ com maiúscula, número e símbolo" />
-                {senha.length > 0 && !senhaForte(senha) && <span style={{ fontSize: 11, color: VERMELHO, display: "block", marginTop: 3 }}>Senha fraca</span>}
-              </div>
-              <div>
-                <label htmlFor="u-perfil" style={label}>Perfil</label>
-                <select id="u-perfil" style={input} value={perfil} onChange={(e) => setPerfil(e.target.value)}>
-                  {PERFIS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
-                </select>
-              </div>
-
-              {/* Acesso */}
-              <div>
-                <span style={label}>Acesso às telas <span style={{ color: VINHO }}>*</span></span>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
-                    <input type="radio" name="acesso" checked={modoAcesso === "geral"} onChange={() => setModoAcesso("geral")} />
-                    Acesso geral <span style={{ fontSize: 11, color: "#8A8D96" }}>(todas as telas)</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
-                    <input type="radio" name="acesso" checked={modoAcesso === "personalizado"} onChange={() => setModoAcesso("personalizado")} />
-                    Personalizado <span style={{ fontSize: 11, color: "#8A8D96" }}>(escolher telas)</span>
-                  </label>
-                </div>
-                {modoAcesso === "personalizado" && (
-                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7, padding: "10px 12px", background: "#F6F7F9", borderRadius: 10, border: "1px solid #E7E9ED" }}>
-                    {TELAS.map((t) => (
-                      <label key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", cursor: "pointer" }}>
-                        <input type="checkbox" checked={telasSel.includes(t.key)} onChange={() => toggleTela(t.key)} />
-                        <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 15, color: VINHO }} />{t.label}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button disabled={salvando} style={{ width: "100%", background: VINHO, color: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 600, border: "none", cursor: salvando ? "default" : "pointer", opacity: salvando ? 0.6 : 1, fontFamily: SANS }}>
-                {salvando ? "Criando…" : "Criar usuário"}
-              </button>
-            </form>
+            {editando ? (
+              <FormUsuario key={editando.id} inicial={editando} modoEdicao onSalvar={salvarEdicao} onCancelar={() => setEditando(null)} salvando={salvando} />
+            ) : (
+              <FormUsuario key="novo" modoEdicao={false} onSalvar={criar} salvando={salvando} />
+            )}
           </div>
         </div>
       </div>

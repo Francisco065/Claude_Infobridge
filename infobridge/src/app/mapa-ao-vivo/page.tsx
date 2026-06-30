@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  apiFetch, podeAcessar,
+  apiFetch, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin,
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
+import SemAcesso from "@/components/SemAcesso";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise / Cadastros) ──
 const VINHO = "#6E1414";
@@ -349,6 +350,7 @@ export default function MapaAoVivoPage() {
   const limparSelecao = () => setSel(() => Object.fromEntries(veiculos.map((v) => [v.id, false])));
 
   if (!token) return <LoginForm onLogin={handleLogin} />;
+  if (!podeAcessar("mapa-ao-vivo")) return <SemAcesso destino={primeiraTelaPermitida()} />;
 
   const liveAgo = secsAgo < 5 ? "agora" : secsAgo < 60 ? `há ${secsAgo}s` : `há ${Math.floor(secsAgo / 60)} min`;
   const pvRaw = popupId ? veiculos.find((v) => v.id === popupId) : null;
@@ -382,7 +384,7 @@ export default function MapaAoVivoPage() {
             <a href="/info-analise" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-chart-dots" aria-hidden="true" style={{ fontSize: 16 }} />Info Análise</a>
             <a href="/cadastros" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-folder" aria-hidden="true" style={{ fontSize: 16 }} />Cadastros</a>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-map-pin" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo</span>
-            {podeAcessar("usuarios") && <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários</a>}
+            {ehGestorOuAdmin() && <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários</a>}
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

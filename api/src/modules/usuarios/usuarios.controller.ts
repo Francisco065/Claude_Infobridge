@@ -32,15 +32,15 @@ export class UsuariosController {
   }
 
   @Post()
-  @Roles(UsuarioPerfil.ADMIN)
-  @ApiOperation({ summary: '[Admin] Cria um novo usuário no tenant' })
+  @Roles(UsuarioPerfil.ADMIN, UsuarioPerfil.GESTOR)
+  @ApiOperation({ summary: '[Admin/Gestor] Cria um novo usuário no tenant' })
   criar(@TenantId() tenantId: string, @Body() dto: CriarUsuarioDto) {
     return this.usuariosService.criar(tenantId, dto);
   }
 
   @Patch(':id')
-  @Roles(UsuarioPerfil.ADMIN)
-  @ApiOperation({ summary: '[Admin] Atualiza nome, perfil ou status do usuário' })
+  @Roles(UsuarioPerfil.ADMIN, UsuarioPerfil.GESTOR)
+  @ApiOperation({ summary: '[Admin/Gestor] Atualiza nome, e-mail, perfil, permissões ou status' })
   atualizar(
     @TenantId() tenantId: string,
     @Param('id') id: string,

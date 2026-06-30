@@ -66,8 +66,22 @@ export class UsuariosService {
     if (id === solicitanteId && dto.ativo === false) {
       throw new ForbiddenException('Você não pode desativar sua própria conta');
     }
+
+    // E-mail novo não pode colidir com outro usuário
+    if (dto.email && dto.email.toLowerCase() !== usuario.email) {
+      const existe = await this.db.getRepository(Usuario)
+        .findOne({ where: { email: dto.email.toLowerCase() } });
+      if (existe && existe.id !== id) throw new EmailJaCadastradoException(dto.email);
+    }
+
+    const acessoTotal = dto.acessoTotal ?? usuario.acessoTotal;
     await this.repo(tenantId).update(id, {
-      nome: dto.nome ?? usuario.nome, perfil: dto.perfil ?? usuario.perfil, ativo: dto.ativo ?? usuario.ativo,
+      nome: dto.nome ?? usuario.nome,
+      email: dto.email ? dto.email.toLowerCase() : usuario.email,
+      perfil: dto.perfil ?? usuario.perfil,
+      ativo: dto.ativo ?? usuario.ativo,
+      acessoTotal,
+      telas: acessoTotal ? [] : (dto.telas ?? usuario.telas ?? []),
     });
     return this.buscarPorId(tenantId, id);
   }
