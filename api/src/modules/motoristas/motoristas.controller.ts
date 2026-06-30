@@ -9,7 +9,7 @@ import { UsuarioPerfil }            from '../../database/entities/enums';
 import { MotoristasService }        from './motoristas.service';
 import {
   CriarMotoristaDto, AtualizarMotoristaDto,
-  VincularVeiculoDto, FiltroMotoristaDto,
+  VincularVeiculoDto, FiltroMotoristaDto, VincularEmpresaDto,
 } from './motoristas.dto';
 
 @ApiTags('Motoristas')
@@ -49,6 +49,13 @@ export class MotoristasController {
   @ApiOperation({ summary: 'Atualiza dados do motorista' })
   atualizar(@TenantId() t: string, @Param('id') id: string, @Body() dto: AtualizarMotoristaDto) {
     return this.motoService.atualizar(t, id, dto);
+  }
+
+  @Patch(':id/empresa')
+  @Roles(UsuarioPerfil.ADMIN)
+  @ApiOperation({ summary: '[Admin] Vincula (ou desvincula) o motorista a uma empresa' })
+  vincularEmpresa(@TenantId() t: string, @Param('id') id: string, @Body() dto: VincularEmpresaDto) {
+    return this.motoService.vincularEmpresa(t, id, dto.empresaId ?? null);
   }
 
   @Post(':id/vincular')

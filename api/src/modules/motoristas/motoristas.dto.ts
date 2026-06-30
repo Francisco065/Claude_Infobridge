@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional,
-  Matches, Length, IsUUID, IsDateString,
+  Matches, Length, IsUUID, IsDateString, ValidateIf,
 } from 'class-validator';
 import { PartialType, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsCpf } from '../../common/validators/cpf.validator';
@@ -38,6 +38,14 @@ export class AtualizarMotoristaDto extends PartialType(CriarMotoristaDto) {
   @ApiPropertyOptional()
   @IsOptional()
   ativo?: boolean;
+}
+
+export class VincularEmpresaDto {
+  @ApiPropertyOptional({ description: 'UUID da empresa (null para desvincular)' })
+  @IsOptional()
+  @ValidateIf((o) => o.empresaId !== null && o.empresaId !== undefined)
+  @IsUUID()
+  empresaId?: string | null;
 }
 
 export class VincularVeiculoDto {

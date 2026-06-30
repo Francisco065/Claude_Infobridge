@@ -91,6 +91,14 @@ export class MotoristasService {
     return this.buscarPorId(tenantId, id);
   }
 
+  async vincularEmpresa(tenantId: string, id: string, empresaId: string | null) {
+    const motorista = await this.repo(tenantId).findById(id);
+    if (!motorista) throw new MotoristaNaoEncontradoException(id);
+    await this.repo(tenantId).update(id, { empresaId: empresaId || null } as any);
+    this.logger.log(`Motorista ${motorista.nome} ${empresaId ? `vinculado à empresa ${empresaId}` : 'desvinculado de empresa'} [tenant: ${tenantId}]`);
+    return this.buscarPorId(tenantId, id);
+  }
+
   async vincularVeiculo(tenantId: string, motoristaId: string, dto: VincularVeiculoDto) {
     const motorista = await this.repo(tenantId).findById(motoristaId);
     if (!motorista) throw new MotoristaNaoEncontradoException(motoristaId);

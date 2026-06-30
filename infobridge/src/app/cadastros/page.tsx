@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  apiFetch, apiPost, apiDelete, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin, ehAdminTotal,
+  apiFetch, apiPost, apiPatch, apiDelete, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin, ehAdminTotal,
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
@@ -34,6 +34,7 @@ type Motorista = {
   ativo?: boolean;
   veiculoId?: string | null;
   placa?: string | null;
+  empresaId?: string | null;
 };
 
 type Veiculo = {
@@ -367,6 +368,19 @@ export default function CadastrosPage() {
     }
   }
 
+  async function vincularEmpresaMotorista(motoId: string, empresaId: string) {
+    if (!token) return;
+    setErro(""); setAviso("");
+    try {
+      await apiPatch(`/motoristas/${motoId}/empresa`, token, { empresaId: empresaId || null });
+      const nm = empresas.find((e) => e.id === empresaId)?.nome;
+      setAviso(empresaId ? `Motorista vinculado à empresa “${nm}”.` : "Motorista desvinculado da empresa.");
+      await carregar(token);
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao vincular empresa");
+    }
+  }
+
   async function vincular(motoId: string, veiId: string, nomeMoto: string, placa: string) {
     if (!token || !motoId || !veiId) return;
     setOcupado(true); setErro(""); setAviso("");
@@ -408,6 +422,7 @@ export default function CadastrosPage() {
 
   // Operador/Somente leitura: apenas visualizam (não criam motorista nem vinculam).
   const podeEditar = ehGestorOuAdmin();
+  const nomeEmpresaMoto = (id?: string | null) => (id ? (empresas.find((e) => e.id === id)?.nome ?? null) : null);
 
   // ── Estilos reutilizados ────────────────────────────────────
   const cardLista: React.CSSProperties = {
@@ -600,6 +615,24 @@ export default function CadastrosPage() {
                             </span>
                           </div>
                           <div style={{ fontSize: 11.5, color: "#6B6E76", marginTop: 2 }}>{sub}</div>
+                          {ehAdminTotal() ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                              <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 13, color: AZUL }} />
+                              <select
+                                value={m.empresaId ?? ""}
+                                onChange={(e) => vincularEmpresaMotorista(m.id, e.target.value)}
+                                aria-label="Empresa do motorista"
+                                style={{ ...inp, padding: "5px 8px", fontSize: 11.5, width: "auto", maxWidth: 220, cursor: "pointer", color: m.empresaId ? "#33363D" : "#9A9DA4" }}
+                              >
+                                <option value="">Sem empresa…</option>
+                                {empresas.map((emp) => <option key={emp.id} value={emp.id}>{emp.nome}</option>)}
+                              </select>
+                            </div>
+                          ) : nomeEmpresaMoto(m.empresaId) ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, fontSize: 10.5, fontWeight: 600, color: AZUL, background: "#EEF2F9", borderRadius: 6, padding: "2px 8px" }}>
+                              <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 12 }} />{nomeEmpresaMoto(m.empresaId)}
+                            </div>
+                          ) : null}
                         </div>
 
                         {veic ? (
