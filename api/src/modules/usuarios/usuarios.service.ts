@@ -1,8 +1,9 @@
 import { Injectable, ConflictException, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource }       from 'typeorm';
+import { DataSource, In }   from 'typeorm';
 import * as bcrypt          from 'bcrypt';
 import { Usuario }          from '../../database/entities/usuario.entity';
+import { Empresa }          from '../../database/entities/empresa.entity';
 import { UsuarioPerfil }    from '../../database/entities/enums';
 import { TenantAwareRepository } from '../../database/tenant-aware.repository';
 import {
@@ -33,6 +34,20 @@ export class UsuariosService {
     }
 
     const [dados, total] = await qb.skip(paginacao.skip).take(paginacao.limite).getManyAndCount();
+
+    // Anexa o nome fantasia da empresa vinculada (apenas visual na listagem).
+    const empresaIds = [...new Set(dados.map((u) => u.empresaId).filter(Boolean))] as string[];
+    if (empresaIds.length) {
+      const empresas = await this.db.getRepository(Empresa).find({
+        where: { tenantId, id: In(empresaIds) },
+        select: ['id', 'nome', 'nomeFantasia'],
+      });
+      const mapa = new Map(empresas.map((e) => [e.id, e.nomeFantasia || e.nome]));
+      for (const u of dados as any[]) {
+        if (u.empresaId) u.empresaNomeFantasia = mapa.get(u.empresaId) ?? null;
+      }
+    }
+
     return RespostaPaginadaDto.de(dados, total, paginacao);
   }
 

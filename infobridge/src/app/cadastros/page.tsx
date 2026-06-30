@@ -9,6 +9,7 @@ import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import SemAcesso from "@/components/SemAcesso";
 import LogoInfobridge from "@/components/LogoInfobridge";
+import MenuNavegacao from "@/components/MenuNavegacao";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise) ───────
 const VINHO = "#6E1414";
@@ -461,39 +462,7 @@ export default function CadastrosPage() {
                 </div>
               </div>
 
-              <nav style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
-                <a href="/info-analise" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                  <i className="ti ti-chart-dots" aria-hidden="true" style={{ fontSize: 16 }} />Info Análise
-                </a>
-                <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                  <i className="ti ti-map-2" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo
-                </a>
-                {ehGestorOuAdmin() && (
-                  <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                    <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
-                  </a>
-                )}
-                {ehAdminTotal() && (
-                  <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                    <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas
-                  </a>
-                )}
-
-                <div style={{ position: "relative" }}>
-                  <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: menuAberto ? "#F0E6E6" : "#F6F2F2", border: "none", fontWeight: 600, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: SANS }}>
-                    <i className="ti ti-folder" aria-hidden="true" style={{ fontSize: 16 }} />Cadastros
-                    <i className={`ti ${menuAberto ? "ti-chevron-up" : "ti-chevron-down"}`} aria-hidden="true" style={{ fontSize: 14, opacity: 0.7 }} />
-                  </button>
-
-                  {menuAberto && (
-                    <div role="menu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 248, background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13, boxShadow: "0 14px 38px rgba(30,32,40,.16)", padding: 6 }}>
-                      <div className="cad-mi" style={{ borderRadius: 10 }}>{itemMenu("mot", "ti-id-badge-2", "#F4EDED", VINHO, "Motoristas", "Criar, buscar e vincular", motoristas.length)}</div>
-                      <div className="cad-mi" style={{ borderRadius: 10 }}>{itemMenu("vei", "ti-truck", "#EEF0F6", AZUL, "Veículos", "Frota e quem dirige cada um", veiculos.length)}</div>
-                    </div>
-                  )}
-                </div>
-              </nav>
+              <MenuNavegacao atual="cadastros" />
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -509,7 +478,6 @@ export default function CadastrosPage() {
           </div>
 
           {/* Backdrop de clique-fora do menu */}
-          {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 25, background: "transparent" }} />}
 
           {/* Título da tela + busca */}
           <div className="cad-titlebar" style={{ background: "#F6F7F9", padding: "16px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>

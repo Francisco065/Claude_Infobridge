@@ -8,6 +8,7 @@ import {
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import LogoInfobridge from "@/components/LogoInfobridge";
+import MenuNavegacao from "@/components/MenuNavegacao";
 
 // ── Paleta / tipografia ───────────────────────────────────────
 const VINHO = "#6E1414";
@@ -34,6 +35,7 @@ type Usuario = {
   telas?: string[];
   ativo?: boolean;
   empresaId?: string | null;
+  empresaNomeFantasia?: string | null;
 };
 
 const iniciais = (n?: string) =>
@@ -187,9 +189,10 @@ export default function UsuariosPage() {
   const [filtroAtivo, setFiltroAtivo] = useState("");
   const [cadNavAberto, setCadNavAberto] = useState(false);
   const [empresas, setEmpresas] = useState<{ id: string; nome: string; nomeFantasia?: string }[]>([]);
-  const nomeEmpresa = (id?: string | null) => {
-    if (!id) return null;
-    const e = empresas.find((x) => x.id === id);
+  const nomeEmpresa = (u: Usuario) => {
+    if (u.empresaNomeFantasia) return u.empresaNomeFantasia;
+    if (!u.empresaId) return null;
+    const e = empresas.find((x) => x.id === u.empresaId);
     return e ? (e.nomeFantasia || e.nome) : null;
   };
 
@@ -306,41 +309,7 @@ export default function UsuariosPage() {
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#1F2024" }}>Usuários</div>
               </div>
             </div>
-            <nav style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-              {navTelas.map((t) => (
-                t.key === "cadastros" ? (
-                  <div key={t.key} style={{ position: "relative" }}>
-                    <button onClick={() => setCadNavAberto((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, background: "transparent", border: "none", cursor: "pointer", fontFamily: SANS }}>
-                      <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
-                      <i className="ti ti-chevron-down" aria-hidden="true" style={{ fontSize: 14 }} />
-                    </button>
-                    {cadNavAberto && (
-                      <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 40, background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, boxShadow: "0 12px 30px rgba(30,32,40,.14)", padding: 6, minWidth: 170 }}>
-                        <a href="/cadastros" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", fontWeight: 500, padding: "8px 10px", borderRadius: 7, textDecoration: "none" }}>
-                          <i className="ti ti-user-pin" aria-hidden="true" style={{ fontSize: 16, color: VINHO }} />Motoristas
-                        </a>
-                        <a href="/cadastros?tela=vei" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", fontWeight: 500, padding: "8px 10px", borderRadius: 7, textDecoration: "none" }}>
-                          <i className="ti ti-truck" aria-hidden="true" style={{ fontSize: 16, color: VINHO }} />Veículos
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <a key={t.key} href={t.href} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, textDecoration: "none" }}>
-                    <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
-                  </a>
-                )
-              ))}
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
-                <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
-              </span>
-              {ehAdminTotal() && (
-                <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                  <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas
-                </a>
-              )}
-            </nav>
-            {cadNavAberto && <div onClick={() => setCadNavAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 30, background: "transparent" }} />}
+            <MenuNavegacao atual="usuarios" />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -394,9 +363,9 @@ export default function UsuariosPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 600, color: "#1F2024", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                             {u.nome}
-                            {nomeEmpresa(u.empresaId) && (
+                            {nomeEmpresa(u) && (
                               <span title="Empresa vinculada" style={{ fontSize: 10.5, fontWeight: 600, color: AZUL, background: "#EEF2F9", borderRadius: 6, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 12 }} />{nomeEmpresa(u.empresaId)}
+                                <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 12 }} />{nomeEmpresa(u)}
                               </span>
                             )}
                           </div>

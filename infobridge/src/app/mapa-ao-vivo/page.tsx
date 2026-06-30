@@ -9,6 +9,7 @@ import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import SemAcesso from "@/components/SemAcesso";
 import LogoInfobridge from "@/components/LogoInfobridge";
+import MenuNavegacao from "@/components/MenuNavegacao";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise / Cadastros) ──
 const VINHO = "#6E1414";
@@ -196,9 +197,11 @@ export default function MapaAoVivoPage() {
       const v = await apiFetch<{ dados: Veiculo[] }>("/veiculos/ao-vivo", tk);
       const norm = (v.dados ?? []).map(normalizar);
       setVeiculos(norm);
+      // Padrão: nenhum veículo pré-selecionado — o usuário escolhe o que quer ver
+      // (evita sobrecarregar o mapa/markers com a frota inteira).
       setSel((prev) => {
         const next = { ...prev };
-        norm.forEach((x) => { if (next[x.id] === undefined) next[x.id] = true; });
+        norm.forEach((x) => { if (next[x.id] === undefined) next[x.id] = false; });
         return next;
       });
     } catch (e: any) {
@@ -217,11 +220,11 @@ export default function MapaAoVivoPage() {
     }
   }, [carregar]);
 
-  // Poll de telemetria (30s) + relógio do "atualizado há".
+  // Atualização automática a cada 5 minutos + relógio do "atualizado há".
   useEffect(() => {
     if (!token) return;
     const clock = setInterval(() => setSecsAgo((s) => s + 1), 1000);
-    const poll = setInterval(() => { setSecsAgo(0); carregar(token); }, 30000);
+    const poll = setInterval(() => { setSecsAgo(0); carregar(token); }, 5 * 60 * 1000);
     return () => { clearInterval(clock); clearInterval(poll); };
   }, [token, carregar]);
 
@@ -350,6 +353,7 @@ export default function MapaAoVivoPage() {
         @keyframes mkpulse { 0%{box-shadow:0 0 0 0 rgba(22,163,74,.45),0 3px 8px rgba(20,16,16,.3)} 70%{box-shadow:0 0 0 11px rgba(22,163,74,0),0 3px 8px rgba(20,16,16,.3)} 100%{box-shadow:0 0 0 0 rgba(22,163,74,0),0 3px 8px rgba(20,16,16,.3)} }
         @keyframes lpulse { 0%{box-shadow:0 0 0 0 rgba(22,163,74,.55)} 70%{box-shadow:0 0 0 6px rgba(22,163,74,0)} 100%{box-shadow:0 0 0 0 rgba(22,163,74,0)} }
         .map-mi:hover { background: #F7F8FA; }
+        @keyframes spin { to { transform: rotate(360deg) } }
       `}</style>
 
       {/* ===== HEADER ===== */}
@@ -362,13 +366,7 @@ export default function MapaAoVivoPage() {
               <div style={{ fontSize: 15, fontWeight: 700, color: "#1F2024" }}>Sistema</div>
             </div>
           </div>
-          <nav style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
-            <a href="/info-analise" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-chart-dots" aria-hidden="true" style={{ fontSize: 16 }} />Info Análise</a>
-            <a href="/cadastros" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-folder" aria-hidden="true" style={{ fontSize: 16 }} />Cadastros</a>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-map-pin" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo</span>
-            {ehGestorOuAdmin() && <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários</a>}
-            {ehAdminTotal() && <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas</a>}
-          </nav>
+          <MenuNavegacao atual="mapa-ao-vivo" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-user" aria-hidden="true" style={{ fontSize: 17, color: VINHO }} /></span>
@@ -465,7 +463,10 @@ export default function MapaAoVivoPage() {
               </div>
             )}
           </div>
-          <button onClick={() => token && carregar(token)} title="Atualizar agora" aria-label="Atualizar agora" style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid #DDE0E6", background: "#FFFFFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#5A5D65", flexShrink: 0 }}><i className="ti ti-refresh" aria-hidden="true" style={{ fontSize: 18 }} /></button>
+          <button onClick={() => { if (token) { setSecsAgo(0); carregar(token); } }} disabled={carregando} title="Atualizar agora" aria-label="Atualizar agora"
+            style={{ width: 42, height: 42, borderRadius: 11, border: `1px solid ${carregando ? VINHO : "#DDE0E6"}`, background: carregando ? VINHO : "#FFFFFF", cursor: carregando ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: carregando ? "#FFFFFF" : "#5A5D65", flexShrink: 0, transition: "background .15s, color .15s, border-color .15s" }}>
+            <i className={`ti ${carregando ? "ti-loader-2" : "ti-refresh"}`} aria-hidden="true" style={{ fontSize: 18, animation: carregando ? "spin .8s linear infinite" : undefined }} />
+          </button>
         </div>
       </div>
 
@@ -502,7 +503,7 @@ export default function MapaAoVivoPage() {
               <button onClick={() => { const algum = ORDEM.some((k) => statusOn[k]); setStatusOn(Object.fromEntries(ORDEM.map((k) => [k, !algum])) as Record<StatusKey, boolean>); }} style={{ width: "100%", padding: 9, border: "1px solid #DDE0E6", borderRadius: 10, background: "#FFFFFF", cursor: "pointer", fontSize: 12, color: "#5A5D65", fontFamily: SANS, fontWeight: 600 }}>{ORDEM.some((k) => statusOn[k]) ? "Desabilitar todos" : "Habilitar todos"}</button>
             </div>
 
-            <div style={{ marginTop: "auto", padding: "14px 16px", borderTop: "1px solid #EEF0F3", display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: "#8A8D96", lineHeight: 1.5 }}><i className="ti ti-cloud-download" aria-hidden="true" style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }} />Telemetria importada da API a cada 30s · somente leitura</div>
+            <div style={{ marginTop: "auto", padding: "14px 16px", borderTop: "1px solid #EEF0F3", display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: "#8A8D96", lineHeight: 1.5 }}><i className="ti ti-cloud-download" aria-hidden="true" style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }} />Atualização automática a cada 5 minutos</div>
           </aside>
         )}
 

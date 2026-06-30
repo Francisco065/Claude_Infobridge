@@ -6,6 +6,7 @@ import SemAcesso from "@/components/SemAcesso";
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import LogoInfobridge from "@/components/LogoInfobridge";
+import MenuNavegacao from "@/components/MenuNavegacao";
 
 // ── Paleta ────────────────────────────────────────────────────
 const VINHO = "#6E1414";
@@ -76,14 +77,14 @@ function mesLabel(iso?: string): string {
 // Chip de identificação (pílula) usado na faixa de filtros
 function ChipInfo({ icone, rotulo, valor }: { icone: string; rotulo: string; valor: string }) {
   return (
-    <span style={{
+    <span title={valor} style={{
       display: "inline-flex", alignItems: "center", gap: 7, background: "#FFFFFF",
       border: "1px solid #E7E9ED", borderRadius: 999, padding: "8px 14px", fontSize: 13,
-      boxShadow: "0 1px 3px rgba(30,32,40,.04)",
+      boxShadow: "0 1px 3px rgba(30,32,40,.04)", maxWidth: 260, minWidth: 0,
     }}>
-      <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 16, color: VINHO }} />
-      <span style={{ color: "#6B6E76" }}>{rotulo}</span>
-      <span style={{ color: "#33363D", fontWeight: 700 }}>{valor}</span>
+      <i className={`ti ${icone}`} aria-hidden style={{ fontSize: 16, color: VINHO, flexShrink: 0 }} />
+      <span style={{ color: "#6B6E76", flexShrink: 0 }}>{rotulo}</span>
+      <span style={{ color: "#33363D", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{valor}</span>
     </span>
   );
 }
@@ -305,6 +306,7 @@ export default function InfoAnalisePage() {
   const [periodoSel, setPeriodoSel] = useState("");       // chave "inicio|fim"
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
   const [tooltipAcel, setTooltipAcel] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
 
@@ -323,6 +325,7 @@ export default function InfoAnalisePage() {
       const res = await apiFetch<{ dados: any[] }>("/indicadores?limite=1000", tk);
       const dados = res.dados ?? [];
       setIndicadores(dados);
+      setAtualizadoEm(new Date());
       // Padrão: primeiro motorista (período resolvido no render).
       // Deep-link: /info-analise?veiculo=<id> pré-seleciona o motorista desse veículo.
       if (dados.length) {
@@ -401,7 +404,9 @@ export default function InfoAnalisePage() {
   const d = indicadores.find(
     (i) => i.motorista?.id === motoristaSel && `${i.periodoInicio}|${i.periodoFim}` === periodoAtivo,
   ) ?? null;
-  const hoje = new Date().toLocaleDateString("pt-BR");
+  const atualizadoLabel = atualizadoEm
+    ? atualizadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "")
+    : "—";
   // Período sem telemetria suficiente: nenhuma quilometragem registrada.
   const semDados = !!d && num(d.kmTotal) <= 0;
 
@@ -462,55 +467,7 @@ export default function InfoAnalisePage() {
             </div>
 
             {/* Navegação (mesma lógica do menu de Cadastros) */}
-            <nav style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
-                <i className="ti ti-chart-dots" aria-hidden style={{ fontSize: 16 }} />Info Análise
-              </span>
-
-              <a href="/mapa-ao-vivo" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                <i className="ti ti-map-2" aria-hidden style={{ fontSize: 16 }} />Mapa ao vivo
-              </a>
-              {ehGestorOuAdmin() && (
-                <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                  <i className="ti ti-users" aria-hidden style={{ fontSize: 16 }} />Usuários
-                </a>
-              )}
-              {ehAdminTotal() && (
-                <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
-                  <i className="ti ti-building-warehouse" aria-hidden style={{ fontSize: 16 }} />Empresas
-                </a>
-              )}
-
-              <div style={{ position: "relative" }}>
-                <button onClick={() => setMenuAberto((a) => !a)} aria-haspopup="menu" aria-expanded={menuAberto}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", background: menuAberto ? "#EFF0F3" : "transparent", border: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: SANS }}>
-                  <i className="ti ti-folder" aria-hidden style={{ fontSize: 16 }} />Cadastros
-                  <i className={`ti ${menuAberto ? "ti-chevron-up" : "ti-chevron-down"}`} aria-hidden style={{ fontSize: 14, opacity: 0.7 }} />
-                </button>
-
-                {menuAberto && (
-                  <div role="menu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 248, background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 13, boxShadow: "0 14px 38px rgba(30,32,40,.16)", padding: 6 }}>
-                    {[
-                      { href: "/cadastros", icon: "ti-id-badge-2", bg: "#F4EDED", cor: VINHO, titulo: "Motoristas", desc: "Criar, buscar e vincular" },
-                      { href: "/cadastros?tela=vei", icon: "ti-truck", bg: "#EEF0F6", cor: AZUL, titulo: "Veículos", desc: "Frota e quem dirige cada um" },
-                    ].map((it) => (
-                      <a key={it.href} href={it.href} role="menuitem"
-                        style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 11px", borderRadius: 10, textDecoration: "none" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#F6F2F2")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                        <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, background: it.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <i className={`ti ${it.icon}`} aria-hidden style={{ fontSize: 17, color: it.cor }} />
-                        </span>
-                        <span style={{ flex: 1 }}>
-                          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1F2024" }}>{it.titulo}</span>
-                          <span style={{ display: "block", fontSize: 11, color: "#8A8D96", marginTop: 1 }}>{it.desc}</span>
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </nav>
+            <MenuNavegacao atual="info-analise" />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -526,7 +483,6 @@ export default function InfoAnalisePage() {
         </div>
 
         {/* Backdrop de clique-fora do menu */}
-        {menuAberto && <div onClick={() => setMenuAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 25, background: "transparent" }} />}
 
         {/* Faixa de filtros: seletor à esquerda, chips de identificação à direita */}
         <div className="ib-filtros" style={{ background: "#F6F7F9", padding: "14px 24px", borderBottom: "1px solid #EDEFF2", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -539,7 +495,7 @@ export default function InfoAnalisePage() {
                 value={motoristaSel}
                 onChange={(e) => trocarMotorista(e.target.value)}
                 className="ib-select"
-                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210 }}
+                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210, maxWidth: 260, textOverflow: "ellipsis" }}
               >
                 {motoristasOpc.length === 0 && <option value="">—</option>}
                 {motoristasOpc.map((m) => (
@@ -556,7 +512,7 @@ export default function InfoAnalisePage() {
                 value={periodoAtivo}
                 onChange={(e) => setPeriodoSel(e.target.value)}
                 className="ib-select"
-                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210 }}
+                style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, padding: "9px 12px", fontSize: 13, color: "#1F2024", fontFamily: SANS, minWidth: 210, maxWidth: 260, textOverflow: "ellipsis" }}
               >
                 {periodosOpc.length === 0 && <option value="">—</option>}
                 {periodosOpc.map((p) => (
@@ -694,7 +650,7 @@ export default function InfoAnalisePage() {
 
         {/* Rodapé */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderTop: "1px solid #EDEFF2", background: "#FFFFFF" }}>
-          <span style={{ fontSize: 12, color: "#6B6E76" }}>Atualizado em {hoje}</span>
+          <span style={{ fontSize: 12, color: "#6B6E76" }}>Atualizado em {atualizadoLabel}</span>
           <span style={{ fontSize: 12, color: "#6B6E76" }}>
             <span style={{ color: VINHO, fontWeight: 600 }}>INFOBRIDGE</span> · Transformando dados em economia · © 2026
           </span>
