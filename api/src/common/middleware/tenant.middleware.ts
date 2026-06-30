@@ -44,7 +44,10 @@ export class TenantMiddleware implements NestMiddleware {
 
     const token = authHeader.slice(7);
 
-    let payload: { sub: string; tenantId: string; email: string };
+    let payload: {
+      sub: string; tenantId: string; email: string;
+      perfil?: string; acessoTotal?: boolean; empresaId?: string | null;
+    };
     try {
       payload = await this.jwtService.verifyAsync(token);
     } catch {
@@ -52,9 +55,12 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
-    req['userId']   = payload.sub;
-    req['tenantId'] = payload.tenantId;
-    req['email']    = payload.email;
+    req['userId']      = payload.sub;
+    req['tenantId']    = payload.tenantId;
+    req['email']       = payload.email;
+    req['perfil']      = payload.perfil;
+    req['acessoTotal'] = payload.acessoTotal;
+    req['empresaId']   = payload.empresaId ?? null;
 
     await this.dataSource.query(
       `SET app.current_tenant = '${payload.tenantId}'`,

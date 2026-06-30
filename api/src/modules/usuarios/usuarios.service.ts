@@ -25,7 +25,7 @@ export class UsuariosService {
   async listar(tenantId: string, paginacao: PaginacaoDto): Promise<RespostaPaginadaDto<Omit<Usuario, 'senhaHash'>>> {
     const qb = this.repo(tenantId)
       .createQueryBuilder('u')
-      .select(['u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo', 'u.ultimoLogin', 'u.criadoEm'])
+      .select(['u.id', 'u.nome', 'u.email', 'u.perfil', 'u.ativo', 'u.ultimoLogin', 'u.criadoEm', 'u.acessoTotal', 'u.telas', 'u.empresaId'])
       .orderBy('u.nome', 'ASC');
 
     if (paginacao.busca) {

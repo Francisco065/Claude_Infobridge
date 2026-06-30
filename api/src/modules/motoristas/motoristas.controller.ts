@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards/guards';
-import { TenantId, Roles }          from '../../common/decorators/decorators';
+import { TenantId, Roles, EmpresaScope } from '../../common/decorators/decorators';
 import { UsuarioPerfil }            from '../../database/entities/enums';
 import { MotoristasService }        from './motoristas.service';
 import {
@@ -21,14 +21,14 @@ export class MotoristasController {
 
   @Get()
   @ApiOperation({ summary: 'Lista motoristas do tenant com veículo ativo' })
-  listar(@TenantId() t: string, @Query() f: FiltroMotoristaDto) {
-    return this.motoService.listar(t, f);
+  listar(@TenantId() t: string, @Query() f: FiltroMotoristaDto, @EmpresaScope() empresaId?: string) {
+    return this.motoService.listar(t, f, empresaId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe do motorista com histórico de veículos' })
-  buscar(@TenantId() t: string, @Param('id') id: string) {
-    return this.motoService.buscarPorId(t, id);
+  buscar(@TenantId() t: string, @Param('id') id: string, @EmpresaScope() empresaId?: string) {
+    return this.motoService.buscarPorId(t, id, empresaId);
   }
 
   @Get(':id/historico')

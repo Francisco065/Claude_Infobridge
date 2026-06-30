@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards/guards';
-import { TenantId, Roles }          from '../../common/decorators/decorators';
+import { TenantId, Roles, EmpresaScope } from '../../common/decorators/decorators';
 import { UsuarioPerfil }            from '../../database/entities/enums';
 import { VeiculosService }          from './veiculos.service';
 import { AtualizarVeiculoDto, FiltroVeiculoDto } from './veiculos.dto';
@@ -17,20 +17,20 @@ export class VeiculosController {
 
   @Get()
   @ApiOperation({ summary: 'Lista veículos do tenant com motorista ativo' })
-  listar(@TenantId() tenantId: string, @Query() filtro: FiltroVeiculoDto) {
-    return this.veiculosService.listar(tenantId, filtro);
+  listar(@TenantId() tenantId: string, @Query() filtro: FiltroVeiculoDto, @EmpresaScope() empresaId?: string) {
+    return this.veiculosService.listar(tenantId, filtro, empresaId);
   }
 
   @Get('ao-vivo')
   @ApiOperation({ summary: 'Última posição/telemetria de cada veículo (mapa ao vivo)' })
-  aoVivo(@TenantId() tenantId: string) {
-    return this.veiculosService.aoVivo(tenantId);
+  aoVivo(@TenantId() tenantId: string, @EmpresaScope() empresaId?: string) {
+    return this.veiculosService.aoVivo(tenantId, empresaId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe do veículo com motorista ativo' })
-  buscar(@TenantId() tenantId: string, @Param('id') id: string) {
-    return this.veiculosService.buscarPorId(tenantId, id);
+  buscar(@TenantId() tenantId: string, @Param('id') id: string, @EmpresaScope() empresaId?: string) {
+    return this.veiculosService.buscarPorId(tenantId, id, empresaId);
   }
 
   @Patch(':id')

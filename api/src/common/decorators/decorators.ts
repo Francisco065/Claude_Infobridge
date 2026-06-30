@@ -49,6 +49,26 @@ export const UserId = createParamDecorator(
     ctx.switchToHttp().getRequest()['userId'],
 );
 
+// ── @EmpresaScope() ───────────────────────────────────────────
+/**
+ * Empresa (cliente) à qual as consultas devem ser restritas.
+ *
+ * Retorna `undefined` (= sem restrição, vê todas as empresas do tenant) quando:
+ *  - o usuário é admin, OU
+ *  - o usuário tem acesso total, OU
+ *  - o usuário não está vinculado a nenhuma empresa (legado/irrestrito).
+ *
+ * Caso contrário, retorna o `empresaId` do usuário — os serviços aplicam
+ * `WHERE empresa_id = :empresaId` para isolar os dados do cliente.
+ */
+export const EmpresaScope = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): string | undefined => {
+    const req = ctx.switchToHttp().getRequest();
+    if (req['perfil'] === 'admin' || req['acessoTotal'] === true) return undefined;
+    return req['empresaId'] || undefined;
+  },
+);
+
 // ── @IsSuperAdmin() ──────────────────────────────────────────
 /**
  * Decorator de guarda para rotas exclusivas da Infobridge (plataforma).

@@ -28,7 +28,7 @@ export class MotoristasService {
     return new TenantAwareRepository(Motorista, this.db, tenantId);
   }
 
-  async listar(tenantId: string, filtro: FiltroMotoristaDto) {
+  async listar(tenantId: string, filtro: FiltroMotoristaDto, empresaId?: string) {
     const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
     const qb = this.repo(tenantId)
       .createQueryBuilder('m')
@@ -36,6 +36,8 @@ export class MotoristasService {
       .leftJoinAndSelect('vmv.veiculo', 'v')
       .where('m.ativo = true')
       .orderBy('m.nome', 'ASC');
+
+    if (empresaId) qb.andWhere('m.empresa_id = :empresaId', { empresaId });
 
     if (filtro.busca) {
       qb.andWhere('(m.nome ILIKE :b OR m.cpf LIKE :b)', { b: `%${filtro.busca}%` });
@@ -45,15 +47,17 @@ export class MotoristasService {
     return RespostaPaginadaDto.de(dados, total, paginacao as any);
   }
 
-  async buscarPorId(tenantId: string, id: string) {
-    const motorista = await this.repo(tenantId)
+  async buscarPorId(tenantId: string, id: string, empresaId?: string) {
+    const qb = this.repo(tenantId)
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.vinculos', 'vmv')
       .leftJoinAndSelect('vmv.veiculo', 'v')
       .andWhere('m.id = :id', { id })
-      .orderBy('vmv.inicio', 'DESC')
-      .getOne();
+      .orderBy('vmv.inicio', 'DESC');
 
+    if (empresaId) qb.andWhere('m.empresa_id = :empresaId', { empresaId });
+
+    const motorista = await qb.getOne();
     if (!motorista) throw new MotoristaNaoEncontradoException(id);
     return motorista;
   }

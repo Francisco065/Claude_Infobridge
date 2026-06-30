@@ -23,7 +23,7 @@ export class VeiculosService {
    * vinculado ativo. Status derivado de velocidade/ignição.
    * Combustível ainda não é ingerido → vai null (a UI não dispara "pane seca").
    */
-  async aoVivo(tenantId: string) {
+  async aoVivo(tenantId: string, empresaId?: string) {
     const rows = await this.db.query(
       `
       SELECT v.id, v.placa, v.marca, v.modelo, v.frota,
@@ -48,9 +48,10 @@ export class VeiculosService {
              ON vmv.veiculo_id = v.id AND vmv.fim IS NULL
       LEFT JOIN motoristas m ON m.id = vmv.motorista_id
       WHERE  v.tenant_id = $1 AND v.ativo = true
+        AND  ($2::uuid IS NULL OR v.empresa_id = $2::uuid)
       ORDER BY v.placa
       `,
-      [tenantId],
+      [tenantId, empresaId ?? null],
     );
 
     const num = (x: any) => (x === null || x === undefined ? null : Number(x));
@@ -76,7 +77,7 @@ export class VeiculosService {
     return { dados };
   }
 
-  async listar(tenantId: string, filtro: FiltroVeiculoDto) {
+  async listar(tenantId: string, filtro: FiltroVeiculoDto, empresaId?: string) {
     const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
     const qb = this.repo(tenantId)
       .createQueryBuilder('v')
@@ -84,6 +85,8 @@ export class VeiculosService {
       .leftJoinAndSelect('vmv.motorista', 'm')
       .where('v.ativo = true')
       .orderBy('v.placa', 'ASC');
+
+    if (empresaId) qb.andWhere('v.empresa_id = :empresaId', { empresaId });
 
     if (filtro.busca) {
       qb.andWhere('(v.placa ILIKE :b OR v.modelo ILIKE :b OR v.frota ILIKE :b)', { b: `%${filtro.busca}%` });
@@ -96,14 +99,16 @@ export class VeiculosService {
     return RespostaPaginadaDto.de(dados, total, paginacao as any);
   }
 
-  async buscarPorId(tenantId: string, id: string) {
-    const veiculo = await this.repo(tenantId)
+  async buscarPorId(tenantId: string, id: string, empresaId?: string) {
+    const qb = this.repo(tenantId)
       .createQueryBuilder('v')
       .leftJoinAndSelect('v.vinculos', 'vmv', 'vmv.fim IS NULL')
       .leftJoinAndSelect('vmv.motorista', 'm')
-      .andWhere('v.id = :id', { id })
-      .getOne();
+      .andWhere('v.id = :id', { id });
 
+    if (empresaId) qb.andWhere('v.empresa_id = :empresaId', { empresaId });
+
+    const veiculo = await qb.getOne();
     if (!veiculo) throw new VeiculoNaoEncontradoException(id);
     return veiculo;
   }

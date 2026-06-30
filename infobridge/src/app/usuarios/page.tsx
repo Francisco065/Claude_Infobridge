@@ -31,6 +31,7 @@ type Usuario = {
   acessoTotal?: boolean;
   telas?: string[];
   ativo?: boolean;
+  empresaId?: string | null;
 };
 
 const iniciais = (n?: string) =>
@@ -72,17 +73,19 @@ const inputBase: React.CSSProperties = {
 const labelBase: React.CSSProperties = { fontSize: 12, color: "#5A5D65", display: "block", marginBottom: 5 };
 
 // ── Formulário de usuário (criar e editar) ────────────────────
-function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
+function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao, empresas }: {
   inicial?: Partial<Usuario>;
   onSalvar: (dados: any) => void;
   onCancelar?: () => void;
   salvando: boolean;
   modoEdicao: boolean;
+  empresas: { id: string; nome: string }[];
 }) {
   const [nome, setNome] = useState(inicial?.nome ?? "");
   const [email, setEmail] = useState(inicial?.email ?? "");
   const [senha, setSenha] = useState("");
   const [perfil, setPerfil] = useState(inicial?.perfil ?? "operador");
+  const [empresaId, setEmpresaId] = useState(inicial?.empresaId ?? "");
   const [modoAcesso, setModoAcesso] = useState<"geral" | "personalizado">(inicial?.acessoTotal ? "geral" : (inicial && !modoEdicao ? "geral" : (inicial?.acessoTotal === false ? "personalizado" : "geral")));
   const [telasSel, setTelasSel] = useState<string[]>(inicial?.telas ?? []);
   const [erro, setErro] = useState("");
@@ -108,6 +111,7 @@ function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
       nome, email, perfil,
       acessoTotal: modoAcesso === "geral",
       telas: modoAcesso === "geral" ? [] : telasSel,
+      empresaId: empresaId || null,
     };
     if (!modoEdicao) dados.senha = senha;
     onSalvar(dados);
@@ -137,6 +141,15 @@ function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
           {PERFIS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
         </select>
       </div>
+      {empresas.length > 0 && (
+        <div>
+          <label style={labelBase}>Empresa <span style={{ color: "#A4A7AE", fontWeight: 400 }}>(restringe os dados do usuário)</span></label>
+          <select style={inputBase} value={empresaId ?? ""} onChange={(e) => setEmpresaId(e.target.value)}>
+            <option value="">Sem vínculo (vê todos os dados)</option>
+            {empresas.map((emp) => <option key={emp.id} value={emp.id}>{emp.nome}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <span style={labelBase}>Acesso às telas <span style={{ color: VINHO }}>*</span></span>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -186,6 +199,7 @@ export default function UsuariosPage() {
   const [filtroPerfil, setFiltroPerfil] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("");
   const [cadNavAberto, setCadNavAberto] = useState(false);
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([]);
 
   const eu = permissoesDaSessao();
   const podeGerenciar = ehGestorOuAdmin();
@@ -195,6 +209,12 @@ export default function UsuariosPage() {
     try {
       const res = await apiFetch<{ dados: Usuario[] }>("/usuarios?limite=100", tk);
       setUsuarios(res.dados ?? []);
+      if (ehAdminTotal()) {
+        try {
+          const emp = await apiFetch<{ id: string; nome: string }[]>("/empresas", tk);
+          setEmpresas(Array.isArray(emp) ? emp : []);
+        } catch { /* silencioso */ }
+      }
     } catch (e: any) {
       const msg = e?.message ?? "Erro ao carregar usuários";
       if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
@@ -417,9 +437,9 @@ export default function UsuariosPage() {
               {editando ? `Editar: ${editando.nome}` : "Novo usuário"}
             </h2>
             {editando ? (
-              <FormUsuario key={editando.id} inicial={editando} modoEdicao onSalvar={salvarEdicao} onCancelar={() => setEditando(null)} salvando={salvando} />
+              <FormUsuario key={editando.id} inicial={editando} modoEdicao onSalvar={salvarEdicao} onCancelar={() => setEditando(null)} salvando={salvando} empresas={empresas} />
             ) : (
-              <FormUsuario key="novo" modoEdicao={false} onSalvar={criar} salvando={salvando} />
+              <FormUsuario key="novo" modoEdicao={false} onSalvar={criar} salvando={salvando} empresas={empresas} />
             )}
           </div>
         </div>

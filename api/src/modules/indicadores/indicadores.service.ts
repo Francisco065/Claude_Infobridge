@@ -15,7 +15,7 @@ export class IndicadoresService {
 
   // ── Listar com filtros ────────────────────────────────────
 
-  async listar(tenantId: string, filtro: FiltroIndicadorDto) {
+  async listar(tenantId: string, filtro: FiltroIndicadorDto, empresaId?: string) {
     const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
 
     const qb = this.repo
@@ -25,6 +25,7 @@ export class IndicadoresService {
       .where('i.tenant_id = :tenantId', { tenantId })
       .orderBy('i.periodoInicio', 'DESC');
 
+    if (empresaId) qb.andWhere('m.empresa_id = :empresaId', { empresaId });
     if (filtro.motoristaId) qb.andWhere('i.motorista_id = :motoristaId', { motoristaId: filtro.motoristaId });
     if (filtro.veiculoId)   qb.andWhere('i.veiculo_id = :veiculoId', { veiculoId: filtro.veiculoId });
     if (filtro.tipoPeriodo) qb.andWhere('i.tipo_periodo = :tp', { tp: filtro.tipoPeriodo });
@@ -70,7 +71,7 @@ export class IndicadoresService {
 
   // ── Ranking de motoristas por nota ───────────────────────
 
-  async ranking(tenantId: string, filtro: RankingFiltroDto) {
+  async ranking(tenantId: string, filtro: RankingFiltroDto, empresaId?: string) {
     const qb = this.repo
       .createQueryBuilder('i')
       .select([
@@ -88,6 +89,7 @@ export class IndicadoresService {
       .orderBy('"mediaNotaDesempenho"', 'DESC')
       .limit(filtro.limite ?? 10);
 
+    if (empresaId) qb.andWhere('m.empresa_id = :empresaId', { empresaId });
     if (filtro.tipoPeriodo) qb.andWhere('i.tipo_periodo = :tp', { tp: filtro.tipoPeriodo });
     if (filtro.dataInicio)  qb.andWhere('i.periodo_inicio >= :di', { di: filtro.dataInicio });
     if (filtro.dataFim)     qb.andWhere('i.periodo_fim <= :df', { df: filtro.dataFim });
@@ -97,7 +99,7 @@ export class IndicadoresService {
 
   // ── Resumo geral do tenant ────────────────────────────────
 
-  async resumoTenant(tenantId: string, filtro: RankingFiltroDto) {
+  async resumoTenant(tenantId: string, filtro: RankingFiltroDto, empresaId?: string) {
     const qb = this.repo
       .createQueryBuilder('i')
       .select([
@@ -111,6 +113,9 @@ export class IndicadoresService {
       ])
       .where('i.tenant_id = :tenantId', { tenantId });
 
+    if (empresaId) {
+      qb.innerJoin('i.motorista', 'm').andWhere('m.empresa_id = :empresaId', { empresaId });
+    }
     if (filtro.tipoPeriodo) qb.andWhere('i.tipo_periodo = :tp', { tp: filtro.tipoPeriodo });
     if (filtro.dataInicio)  qb.andWhere('i.periodo_inicio >= :di', { di: filtro.dataInicio });
     if (filtro.dataFim)     qb.andWhere('i.periodo_fim <= :df', { df: filtro.dataFim });

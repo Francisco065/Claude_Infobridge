@@ -160,6 +160,7 @@ export class AuthService {
       email: usuario.email, perfil: usuario.perfil, isSuperAdmin: false,
       nome: usuario.nome,
       acessoTotal: usuario.acessoTotal, telas: usuario.telas ?? [],
+      empresaId: usuario.empresaId ?? null,
       precisaTrocarSenha: usuario.precisaTrocarSenha,
     };
     const [accessToken, refreshToken] = await Promise.all([
