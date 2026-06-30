@@ -5,6 +5,7 @@ import { apiFetch, salvarSessao, carregarSessao, limparSessao, podeAcessar, prim
 import SemAcesso from "@/components/SemAcesso";
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
+import LogoInfobridge from "@/components/LogoInfobridge";
 
 // ── Paleta ────────────────────────────────────────────────────
 const VINHO = "#6E1414";
@@ -293,37 +294,6 @@ function TituloSecao({ children, icone }: { children: React.ReactNode; icone?: s
 }
 
 // ── Logotipo Infobridge (marca ponte + caminhão, em vinho) ────
-function LogoInfobridge({ height = 38 }: { height?: number }) {
-  return (
-    <svg height={height} viewBox="0 0 120 76" fill="none" aria-label="Infobridge">
-      <g stroke={VINHO} strokeWidth="3.4" strokeLinecap="round" fill="none">
-        {/* torres */}
-        <line x1="40" y1="10" x2="40" y2="60" />
-        <line x1="80" y1="10" x2="80" y2="60" />
-        {/* cabo principal (catenária central) */}
-        <path d="M40 12 Q60 40 80 12" />
-        {/* cabos laterais até o tabuleiro */}
-        <path d="M40 12 Q20 42 6 60" />
-        <path d="M80 12 Q100 42 114 60" />
-        {/* pendurais */}
-        <line x1="50" y1="20" x2="50" y2="60" strokeWidth="1.6" />
-        <line x1="60" y1="26" x2="60" y2="60" strokeWidth="1.6" />
-        <line x1="70" y1="20" x2="70" y2="60" strokeWidth="1.6" />
-        <line x1="26" y1="33" x2="26" y2="60" strokeWidth="1.6" />
-        <line x1="94" y1="33" x2="94" y2="60" strokeWidth="1.6" />
-        {/* tabuleiro */}
-        <line x1="5" y1="60" x2="115" y2="60" />
-      </g>
-      {/* caminhão central */}
-      <g fill={VINHO}>
-        <rect x="52" y="40" width="16" height="14" rx="2.5" />
-        <rect x="64" y="44" width="6" height="10" rx="1.5" />
-        <circle cx="56" cy="56" r="3" />
-        <circle cx="66" cy="56" r="3" />
-      </g>
-    </svg>
-  );
-}
 
 
 // ── Página principal ──────────────────────────────────────────

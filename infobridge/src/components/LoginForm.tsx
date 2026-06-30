@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { apiLogin, apiSolicitarReset, apiPost } from "@/lib/api";
+import LogoInfobridge from "@/components/LogoInfobridge";
 
 const senhaForte = (s: string) => /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*]).{8,}$/.test(s);
 
@@ -26,32 +27,6 @@ const VINHO = "#6E1414";
 const VERMELHO = "#C0392B";
 const SANS = "'IBM Plex Sans', system-ui, sans-serif";
 
-// Logo Infobridge em cor configurável (branco no painel escuro).
-function LogoInfobridge({ height = 40, cor = VINHO }: { height?: number; cor?: string }) {
-  return (
-    <svg height={height} viewBox="0 0 120 76" fill="none" aria-label="Infobridge">
-      <g stroke={cor} strokeWidth="3.4" strokeLinecap="round" fill="none">
-        <line x1="40" y1="10" x2="40" y2="60" />
-        <line x1="80" y1="10" x2="80" y2="60" />
-        <path d="M40 12 Q60 40 80 12" />
-        <path d="M40 12 Q20 42 6 60" />
-        <path d="M80 12 Q100 42 114 60" />
-        <line x1="50" y1="20" x2="50" y2="60" strokeWidth="1.6" />
-        <line x1="60" y1="26" x2="60" y2="60" strokeWidth="1.6" />
-        <line x1="70" y1="20" x2="70" y2="60" strokeWidth="1.6" />
-        <line x1="26" y1="33" x2="26" y2="60" strokeWidth="1.6" />
-        <line x1="94" y1="33" x2="94" y2="60" strokeWidth="1.6" />
-        <line x1="5" y1="60" x2="115" y2="60" />
-      </g>
-      <g fill={cor}>
-        <rect x="52" y="40" width="16" height="14" rx="2.5" />
-        <rect x="64" y="44" width="6" height="10" rx="1.5" />
-        <circle cx="56" cy="56" r="3" />
-        <circle cx="66" cy="56" r="3" />
-      </g>
-    </svg>
-  );
-}
 
 type Props = {
   onLogin: (token: string, nome: string) => void;

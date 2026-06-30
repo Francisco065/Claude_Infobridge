@@ -8,6 +8,7 @@ import {
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import SemAcesso from "@/components/SemAcesso";
+import LogoInfobridge from "@/components/LogoInfobridge";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise / Cadastros) ──
 const VINHO = "#6E1414";
@@ -133,26 +134,6 @@ function normalizar(v: Veiculo): VeiculoNorm {
 }
 
 // ── Logotipo Infobridge (mesmo de Cadastros) ──────────────────
-function LogoInfobridge({ height = 34 }: { height?: number }) {
-  return (
-    <svg height={height} viewBox="0 0 120 76" fill="none" aria-label="Infobridge">
-      <g stroke={VINHO} strokeWidth="3.4" strokeLinecap="round" fill="none">
-        <line x1="40" y1="10" x2="40" y2="60" />
-        <line x1="80" y1="10" x2="80" y2="60" />
-        <path d="M40 12 Q60 40 80 12" />
-        <path d="M40 12 Q20 42 6 60" />
-        <path d="M80 12 Q100 42 114 60" />
-        <line x1="5" y1="60" x2="115" y2="60" />
-      </g>
-      <g fill={VINHO}>
-        <rect x="52" y="40" width="16" height="14" rx="2.5" />
-        <rect x="64" y="44" width="6" height="10" rx="1.5" />
-        <circle cx="56" cy="56" r="3" />
-        <circle cx="66" cy="56" r="3" />
-      </g>
-    </svg>
-  );
-}
 
 
 // ── Carrega Leaflet (CSS + JS) sob demanda, sem chave de API ───
