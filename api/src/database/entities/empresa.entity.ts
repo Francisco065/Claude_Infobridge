@@ -44,8 +44,28 @@ export class Empresa {
   @Column({ name: 'nome_fantasia', length: 200, nullable: true })
   nomeFantasia: string;
 
+  /** Endereço (legado / livre). Mantido para compatibilidade. */
   @Column({ type: 'text', nullable: true })
   endereco: string;
+
+  // ── Endereço segregado ────────────────────────────────────
+  @Column({ length: 8, nullable: true })
+  cep: string;
+
+  @Column({ length: 200, nullable: true })
+  logradouro: string;
+
+  @Column({ length: 20, nullable: true })
+  numero: string;
+
+  @Column({ length: 120, nullable: true })
+  bairro: string;
+
+  @Column({ length: 120, nullable: true })
+  cidade: string;
+
+  @Column({ length: 2, nullable: true })
+  uf: string;
 
   @Column({ name: 'representante_comercial', length: 200, nullable: true })
   representanteComercial: string;

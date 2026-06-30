@@ -134,6 +134,12 @@ export type Empresa = {
   nome: string;
   nomeFantasia?: string;
   endereco?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
   representanteComercial?: string;
   tipo: "transportadora" | "embarcador" | "consultoria" | "outros";
   responsaveis: ResponsavelEmpresa[];
@@ -142,6 +148,27 @@ export type Empresa = {
   totalVeiculos?: number;
   totalMotoristas?: number;
 };
+
+// Valida um CNPJ real (14 dígitos + dígitos verificadores).
+export function cnpjValido(valor: string): boolean {
+  const c = (valor ?? "").replace(/\D/g, "");
+  if (c.length !== 14 || /^(\d)\1{13}$/.test(c)) return false;
+  const calc = (base: number): number => {
+    const pesos = base === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let soma = 0;
+    for (let i = 0; i < base; i++) soma += parseInt(c[i], 10) * pesos[i];
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(12) === parseInt(c[12], 10) && calc(13) === parseInt(c[13], 10);
+}
+
+export const fmtCnpj = (c?: string) =>
+  c && c.replace(/\D/g, "").length === 14
+    ? c.replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+    : (c ?? "—");
 
 export const EMPRESA_TIPOS = [
   { v: "transportadora", label: "Transportadora" },

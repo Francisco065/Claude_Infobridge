@@ -52,6 +52,12 @@ export class EmpresasService {
       nome:                   dto.nome,
       nomeFantasia:           dto.nomeFantasia,
       endereco:               dto.endereco,
+      cep:                    dto.cep,
+      logradouro:             dto.logradouro,
+      numero:                 dto.numero,
+      bairro:                 dto.bairro,
+      cidade:                 dto.cidade,
+      uf:                     dto.uf?.toUpperCase(),
       representanteComercial: dto.representanteComercial,
       tipo:                   dto.tipo ?? EmpresaTipo.OUTROS,
       responsaveis:           dto.responsaveis ?? [],
@@ -68,16 +74,17 @@ export class EmpresasService {
     const empresa = await this.repo(tenantId).findById(id);
     if (!empresa) throw new NotFoundException(`Empresa ${id} não encontrada`);
 
-    if (dto.cnpj && dto.cnpj !== empresa.cnpj) {
-      const existe = await this.db.getRepository(Empresa).findOne({ where: { tenantId, cnpj: dto.cnpj } });
-      if (existe && existe.id !== id) throw new ConflictException(`CNPJ '${dto.cnpj}' já cadastrado`);
-    }
-
+    // CNPJ é imutável após o cadastro — não é alterado na edição.
     await this.repo(tenantId).update(id, {
-      cnpj:                   dto.cnpj ?? empresa.cnpj,
       nome:                   dto.nome ?? empresa.nome,
       nomeFantasia:           dto.nomeFantasia ?? empresa.nomeFantasia,
       endereco:               dto.endereco ?? empresa.endereco,
+      cep:                    dto.cep ?? empresa.cep,
+      logradouro:             dto.logradouro ?? empresa.logradouro,
+      numero:                 dto.numero ?? empresa.numero,
+      bairro:                 dto.bairro ?? empresa.bairro,
+      cidade:                 dto.cidade ?? empresa.cidade,
+      uf:                     dto.uf ? dto.uf.toUpperCase() : empresa.uf,
       representanteComercial: dto.representanteComercial ?? empresa.representanteComercial,
       tipo:                   dto.tipo ?? empresa.tipo,
       responsaveis:           dto.responsaveis ?? empresa.responsaveis,

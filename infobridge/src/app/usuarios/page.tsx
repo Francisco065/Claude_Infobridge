@@ -11,6 +11,7 @@ import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 // ── Paleta / tipografia ───────────────────────────────────────
 const VINHO = "#6E1414";
 const VERDE = "#16A34A";
+const AZUL = "#27508F";
 const VERMELHO = "#C0322B";
 const SANS = "'IBM Plex Sans', system-ui, sans-serif";
 const MONO = "'IBM Plex Mono', ui-monospace, monospace";
@@ -199,7 +200,12 @@ export default function UsuariosPage() {
   const [filtroPerfil, setFiltroPerfil] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("");
   const [cadNavAberto, setCadNavAberto] = useState(false);
-  const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([]);
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string; nomeFantasia?: string }[]>([]);
+  const nomeEmpresa = (id?: string | null) => {
+    if (!id) return null;
+    const e = empresas.find((x) => x.id === id);
+    return e ? (e.nomeFantasia || e.nome) : null;
+  };
 
   const eu = permissoesDaSessao();
   const podeGerenciar = ehGestorOuAdmin();
@@ -211,7 +217,7 @@ export default function UsuariosPage() {
       setUsuarios(res.dados ?? []);
       if (ehAdminTotal()) {
         try {
-          const emp = await apiFetch<{ id: string; nome: string }[]>("/empresas", tk);
+          const emp = await apiFetch<{ id: string; nome: string; nomeFantasia?: string }[]>("/empresas", tk);
           setEmpresas(Array.isArray(emp) ? emp : []);
         } catch { /* silencioso */ }
       }
@@ -400,7 +406,14 @@ export default function UsuariosPage() {
                       <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: "1px solid #EEF0F3", opacity: inativo ? 0.6 : 1 }}>
                         <span style={{ flexShrink: 0, width: 36, height: 36, borderRadius: "50%", background: "#F4EDED", color: VINHO, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, fontFamily: MONO }}>{iniciais(u.nome)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: "#1F2024" }}>{u.nome}</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: "#1F2024", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                            {u.nome}
+                            {nomeEmpresa(u.empresaId) && (
+                              <span title="Empresa vinculada" style={{ fontSize: 10.5, fontWeight: 600, color: AZUL, background: "#EEF2F9", borderRadius: 6, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 12 }} />{nomeEmpresa(u.empresaId)}
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: 12, color: "#6B6E76" }}>{u.email}</div>
                           <div title={a.titulo} style={{ fontSize: 11, color: "#8A8D96", marginTop: 2, cursor: "help", display: "inline-flex", alignItems: "center", gap: 3 }}>
                             <i className="ti ti-eye" aria-hidden="true" style={{ fontSize: 12 }} />{a.texto}
