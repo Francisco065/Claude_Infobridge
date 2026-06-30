@@ -72,6 +72,16 @@ export function primeiraTelaPermitida(): string {
   return t?.href ?? "/info-analise";
 }
 
+// Sessão expirada/token inválido (401): limpa a sessão e volta à tela de login.
+let _redirecionando = false;
+function sessaoExpirou() {
+  limparSessao();
+  if (typeof window !== "undefined" && !_redirecionando) {
+    _redirecionando = true;
+    window.location.reload(); // a página remonta sem sessão → mostra o login
+  }
+}
+
 export async function apiLogin(email: string, senha: string) {
   const res = await fetch(`${PROXY}/auth/login`, {
     method: "POST",
@@ -96,6 +106,7 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
@@ -115,6 +126,7 @@ export async function apiPatch<T>(path: string, token: string, body: unknown): P
     body: JSON.stringify(body),
   });
   if (!res.ok) {
+    if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
@@ -138,6 +150,7 @@ export async function apiPost<T>(path: string, token: string, body: unknown): Pr
   });
 
   if (!res.ok) {
+    if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
@@ -151,6 +164,7 @@ export async function apiDelete<T>(path: string, token: string): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
