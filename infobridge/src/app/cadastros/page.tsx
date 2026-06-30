@@ -435,13 +435,13 @@ export default function CadastrosPage() {
     <div style={{ minHeight: "100vh", background: "#E9EBEF", fontFamily: SANS }}>
       <style>{`
         .ti { font-family: 'tabler-icons' !important; font-style: normal; }
-        .cad-page { padding: 30px; }
+        .cad-page { padding: 0; }
         .cad-inp:focus { border-color: ${VINHO}; box-shadow: 0 0 0 3px rgba(110,20,20,.08); }
         .cad-row { display: flex; align-items: center; gap: 13px; padding: 14px 4px; border-bottom: 1px solid #EEF0F3; }
         .cad-row:last-child { border-bottom: none; }
         .cad-mi:hover { background: #F6F2F2 !important; }
         @media (max-width: 880px) {
-          .cad-page { padding: 14px; }
+          .cad-page { padding: 0; }
           .cad-header { flex-wrap: wrap; gap: 12px; }
           .cad-titlebar { flex-wrap: wrap; }
           .cad-search { width: 100% !important; }
@@ -449,7 +449,7 @@ export default function CadastrosPage() {
       `}</style>
 
       <div className="cad-page" style={{ display: "flex", justifyContent: "center" }}>
-        <div style={{ width: "100%", maxWidth: 1080, background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 18, overflow: "hidden", boxShadow: "0 12px 40px rgba(30,32,40,.10)" }}>
+        <div style={{ width: "100%", background: "#FFFFFF", overflow: "hidden" }}>
 
           {/* Cabeçalho com menu */}
           <div className="cad-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid #EDEFF2", position: "relative", zIndex: 30 }}>

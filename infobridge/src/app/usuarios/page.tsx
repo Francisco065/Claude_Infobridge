@@ -295,10 +295,10 @@ export default function UsuariosPage() {
   });
 
   return (
-    <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 30, fontFamily: SANS }}>
+    <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 0, fontFamily: SANS }}>
       <style>{`.ti{font-family:'tabler-icons'!important;font-style:normal}`}</style>
 
-      <div style={{ maxWidth: 1080, margin: "0 auto", background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 18, overflow: "hidden", boxShadow: "0 12px 40px rgba(30,32,40,.10)" }}>
+      <div style={{ width: "100%", background: "#FFFFFF", overflow: "hidden" }}>
         {/* Cabeçalho */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid #EDEFF2", flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 18 }}>

@@ -418,7 +418,7 @@ export default function InfoAnalisePage() {
         @keyframes fadeUp { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: translateY(0);} }
 
         /* Layout responsivo */
-        .ib-page { padding: 30px; }
+        .ib-page { padding: 0; }
         .ib-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
         .ib-pos-comp { grid-column: 1; grid-row: 1; }
         .ib-pos-nota { grid-column: 2; grid-row: 1; }
@@ -441,7 +441,7 @@ export default function InfoAnalisePage() {
         }
         /* Celular */
         @media (max-width: 640px) {
-          .ib-page { padding: 12px; }
+          .ib-page { padding: 0; }
           .ib-cards3 { grid-template-columns: repeat(2, 1fr); }
           .ib-select { min-width: 0; width: 100%; }
           .ib-header { flex-wrap: wrap; gap: 12px; }
@@ -452,8 +452,7 @@ export default function InfoAnalisePage() {
       `}</style>
 
       <div style={{
-        maxWidth: 1120, margin: "0 auto", background: "#FFFFFF", border: "1px solid #E2E4E9",
-        borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", overflow: "hidden",
+        width: "100%", background: "#FFFFFF", overflow: "hidden",
       }}>
         {/* Cabeçalho */}
         <div className="ib-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #EDEFF2", position: "relative", zIndex: 30 }}>
