@@ -171,6 +171,48 @@ function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
   );
 }
 
+// ── Modal: alterar a própria senha ────────────────────────────
+function ModalSenha({ token, onFechar, onOk }: { token: string; onFechar: () => void; onOk: () => void }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [conf, setConf] = useState("");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErro("");
+    if (!senhaForte(nova)) { setErro("Senha fraca: 8+ caracteres com maiúscula, número e símbolo (!@#$%^&*)."); return; }
+    if (nova !== conf) { setErro("As senhas não conferem."); return; }
+    setSalvando(true);
+    try {
+      await apiPost("/auth/alterar-senha", token, { senhaAtual: atual, novaSenha: nova });
+      onOk();
+    } catch (e: any) { setErro(e?.message ?? "Erro ao alterar a senha."); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <div onClick={onFechar} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(24,18,18,.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Alterar senha" style={{ width: "100%", maxWidth: 380, background: "#FFFFFF", borderRadius: 16, boxShadow: "0 24px 60px rgba(20,16,16,.32)", padding: 24 }}>
+        <h3 style={{ margin: "0 0 14px", fontSize: 16, fontWeight: 700, color: "#1F2024", display: "flex", alignItems: "center", gap: 8 }}>
+          <i className="ti ti-key" aria-hidden="true" style={{ color: VINHO }} />Alterar minha senha
+        </h3>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {erro && <div role="alert" style={{ background: "#FDF1F1", border: "1px solid #E7B0AC", borderRadius: 10, padding: 10, color: VERMELHO, fontSize: 12 }}>{erro}</div>}
+          <div><label style={labelBase}>Senha atual</label><input type="password" autoComplete="current-password" style={inputBase} value={atual} onChange={(e) => setAtual(e.target.value)} required /></div>
+          <div><label style={labelBase}>Nova senha</label><input type="password" autoComplete="new-password" style={inputBase} value={nova} onChange={(e) => setNova(e.target.value)} required placeholder="8+ com maiúscula, número e símbolo" /></div>
+          <div><label style={labelBase}>Confirmar nova senha</label><input type="password" autoComplete="new-password" style={inputBase} value={conf} onChange={(e) => setConf(e.target.value)} required /></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button disabled={salvando} style={{ flex: 1, background: VINHO, color: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 600, border: "none", cursor: salvando ? "default" : "pointer", opacity: salvando ? 0.6 : 1, fontFamily: SANS }}>{salvando ? "Salvando…" : "Salvar"}</button>
+            <button type="button" onClick={onFechar} style={{ background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Página ────────────────────────────────────────────────────
 export default function UsuariosPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -181,6 +223,11 @@ export default function UsuariosPage() {
   const [aviso, setAviso] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [editando, setEditando] = useState<Usuario | null>(null);
+  const [busca, setBusca] = useState("");
+  const [filtroPerfil, setFiltroPerfil] = useState("");
+  const [filtroAtivo, setFiltroAtivo] = useState("");
+  // Trocar a própria senha
+  const [popupSenha, setPopupSenha] = useState(false);
 
   const eu = permissoesDaSessao();
   const podeGerenciar = ehGestorOuAdmin();
@@ -264,6 +311,16 @@ export default function UsuariosPage() {
 
   const navTelas = TELAS.filter((t) => t.key !== "usuarios" && podeAcessar(t.key));
 
+  // Busca (nome/e-mail) + filtros (perfil, ativo/inativo)
+  const q = busca.trim().toLowerCase();
+  const usuariosFiltrados = usuarios.filter((u) => {
+    if (q && !(`${u.nome} ${u.email}`.toLowerCase().includes(q))) return false;
+    if (filtroPerfil && u.perfil !== filtroPerfil) return false;
+    if (filtroAtivo === "ativo" && u.ativo === false) return false;
+    if (filtroAtivo === "inativo" && u.ativo !== false) return false;
+    return true;
+  });
+
   return (
     <div style={{ minHeight: "100vh", background: "#E9EBEF", padding: 30, fontFamily: SANS }}>
       <style>{`.ti{font-family:'tabler-icons'!important;font-style:normal}`}</style>
@@ -295,6 +352,9 @@ export default function UsuariosPage() {
               <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 17, color: VINHO }} />
             </span>
             <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
+            <button onClick={() => setPopupSenha(true)} title="Alterar minha senha" aria-label="Alterar minha senha" style={{ display: "flex", background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 9px", color: "#5A5D65", cursor: "pointer" }}>
+              <i className="ti ti-key" aria-hidden="true" style={{ fontSize: 15 }} />
+            </button>
             <button onClick={() => { limparSessao(); setToken(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
               <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: 15 }} /> Sair
             </button>
@@ -308,14 +368,31 @@ export default function UsuariosPage() {
             {aviso && <div role="status" style={{ background: "#F0FAF3", border: "1px solid #B7E4C7", borderRadius: 12, padding: 14, color: VERDE, fontSize: 13, marginBottom: 14 }}>{aviso}</div>}
 
             <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 18 }}>
-              <h2 style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase", color: "#6B6E76", margin: "0 0 12px" }}>Usuários ({usuarios.length})</h2>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                <h2 style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, textTransform: "uppercase", color: "#6B6E76", margin: 0 }}>Usuários ({usuariosFiltrados.length})</h2>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ position: "relative" }}>
+                    <i className="ti ti-search" aria-hidden="true" style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "#9A9DA4" }} />
+                    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome ou e-mail…" style={{ ...inputBase, padding: "7px 10px 7px 28px", width: 190, fontSize: 12 }} />
+                  </div>
+                  <select value={filtroPerfil} onChange={(e) => setFiltroPerfil(e.target.value)} style={{ ...inputBase, width: "auto", fontSize: 12, padding: "7px 10px" }}>
+                    <option value="">Todos os perfis</option>
+                    {PERFIS.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
+                  </select>
+                  <select value={filtroAtivo} onChange={(e) => setFiltroAtivo(e.target.value)} style={{ ...inputBase, width: "auto", fontSize: 12, padding: "7px 10px" }}>
+                    <option value="">Ativos e inativos</option>
+                    <option value="ativo">Apenas ativos</option>
+                    <option value="inativo">Apenas inativos</option>
+                  </select>
+                </div>
+              </div>
               {carregando ? (
                 <p style={{ fontSize: 13, color: "#6B6E76" }}>Carregando…</p>
-              ) : usuarios.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#6B6E76" }}>Nenhum usuário cadastrado.</p>
+              ) : usuariosFiltrados.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#6B6E76" }}>{usuarios.length === 0 ? "Nenhum usuário cadastrado." : "Nenhum usuário corresponde aos filtros."}</p>
               ) : (
                 <div>
-                  {usuarios.map((u) => {
+                  {usuariosFiltrados.map((u) => {
                     const a = resumoAcesso(u);
                     const inativo = u.ativo === false;
                     return (
@@ -366,6 +443,14 @@ export default function UsuariosPage() {
           </div>
         </div>
       </div>
+
+      {popupSenha && token && (
+        <ModalSenha
+          token={token}
+          onFechar={() => setPopupSenha(false)}
+          onOk={() => { setPopupSenha(false); setAviso("Senha alterada com sucesso."); }}
+        />
+      )}
     </div>
   );
 }

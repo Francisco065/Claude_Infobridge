@@ -1,6 +1,9 @@
 import {
-  Injectable, UnauthorizedException, BadRequestException, Logger,
+  Injectable, UnauthorizedException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
+
+/** Senha provisória padrão definida no "esqueci a senha" (uso único; troca obrigatória). */
+const SENHA_PADRAO = 'Infobridge@2026';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { JwtService }        from '@nestjs/jwt';
@@ -47,13 +50,19 @@ export class AuthService {
   // ── Login ─────────────────────────────────────────────────
   async login(dto: LoginDto) {
     const usuario = await this.db.getRepository(Usuario).findOne({
-      where:     { email: dto.email.toLowerCase().trim(), ativo: true },
+      where:     { email: dto.email.toLowerCase().trim() },
       relations: ['tenant'],
     });
     if (!usuario) throw new CredenciaisInvalidasException();
 
     const ok = await bcrypt.compare(dto.senha, usuario.senhaHash);
     if (!ok) throw new CredenciaisInvalidasException();
+
+    // Conta inativada: mensagem específica (só após confirmar a senha, para não
+    // revelar a existência do e-mail a quem não conhece a credencial).
+    if (!usuario.ativo) {
+      throw new ForbiddenException('Sua conta foi inativada. Fale com um administrador.');
+    }
 
     await this.db.getRepository(Usuario).update(usuario.id, { ultimoLogin: new Date() });
     const tokens = await this._tokens(usuario);
@@ -65,6 +74,7 @@ export class AuthService {
         id: usuario.id, nome: usuario.nome, email: usuario.email,
         perfil: usuario.perfil, tenantId: usuario.tenantId,
         acessoTotal: usuario.acessoTotal, telas: usuario.telas ?? [],
+        precisaTrocarSenha: usuario.precisaTrocarSenha,
         tenant: { id: usuario.tenant?.id, nome: usuario.tenant?.nome },
       },
     };
@@ -104,18 +114,22 @@ export class AuthService {
       throw new BadRequestException('Senha atual incorreta');
     if (dto.senhaAtual === dto.novaSenha)
       throw new BadRequestException('Nova senha deve ser diferente da atual');
-    await this.db.getRepository(Usuario).update(userId, { senhaHash: await bcrypt.hash(dto.novaSenha, BCRYPT_ROUNDS) });
+    await this.db.getRepository(Usuario).update(userId, {
+      senhaHash: await bcrypt.hash(dto.novaSenha, BCRYPT_ROUNDS),
+      precisaTrocarSenha: false,
+    });
   }
 
   // ── Reset de Senha ────────────────────────────────────────
   async solicitarResetSenha(dto: SolicitarResetSenhaDto) {
     const u = await this.db.getRepository(Usuario).findOne({ where: { email: dto.email.toLowerCase(), ativo: true } });
     if (!u) return; // não revelar se e-mail existe
-    const token = randomBytes(32).toString('hex');
-    const r = await this.redis();
-    await r.setEx(`reset:${token}`, 3600, JSON.stringify({ userId: u.id }));
-    this.logger.log(`Reset solicitado: ${u.email} token=${token}`);
-    // TODO: disparar e-mail
+    // Sem infra de e-mail: define a senha provisória padrão e exige troca no 1º login.
+    await this.db.getRepository(Usuario).update(u.id, {
+      senhaHash: await bcrypt.hash(SENHA_PADRAO, BCRYPT_ROUNDS),
+      precisaTrocarSenha: true,
+    });
+    this.logger.log(`Reset (senha provisória) aplicado: ${u.email}`);
   }
 
   async confirmarResetSenha(dto: ConfirmarResetSenhaDto) {
@@ -146,6 +160,7 @@ export class AuthService {
       email: usuario.email, perfil: usuario.perfil, isSuperAdmin: false,
       nome: usuario.nome,
       acessoTotal: usuario.acessoTotal, telas: usuario.telas ?? [],
+      precisaTrocarSenha: usuario.precisaTrocarSenha,
     };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, { expiresIn: this.config.get('JWT_EXPIRATION', '8h') }),

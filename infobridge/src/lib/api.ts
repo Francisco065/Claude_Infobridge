@@ -86,7 +86,7 @@ export async function apiLogin(email: string, senha: string) {
 
   return res.json() as Promise<{
     accessToken: string;
-    usuario: { nome: string; perfil: string };
+    usuario: { nome: string; perfil: string; precisaTrocarSenha?: boolean };
   }>;
 }
 
@@ -119,6 +119,15 @@ export async function apiPatch<T>(path: string, token: string, body: unknown): P
     throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json().catch(() => ({})) as Promise<T>;
+}
+
+// "Esqueci minha senha" — rota pública; define senha provisória padrão no backend.
+export async function apiSolicitarReset(email: string): Promise<void> {
+  await fetch(`${PROXY}/auth/solicitar-reset-senha`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
 }
 
 export async function apiPost<T>(path: string, token: string, body: unknown): Promise<T> {

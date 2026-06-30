@@ -54,6 +54,10 @@ export class Usuario {
   @Column({ default: true })
   ativo: boolean;
 
+  /** Senha provisória: força troca no próximo login (ex.: após "esqueci a senha"). */
+  @Column({ name: 'precisa_trocar_senha', default: false })
+  precisaTrocarSenha: boolean;
+
   @Column({ name: 'ultimo_login', type: 'timestamptz', nullable: true })
   ultimoLogin: Date;
 

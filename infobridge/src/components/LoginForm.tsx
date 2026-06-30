@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { apiLogin } from "@/lib/api";
+import { apiLogin, apiSolicitarReset, apiPost } from "@/lib/api";
+
+const senhaForte = (s: string) => /^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*]).{8,}$/.test(s);
 
 /* ────────────────────────────────────────────────────────────────────────
  * LoginForm — tela de autenticação compartilhada do Infobridge.
@@ -72,8 +74,14 @@ export default function LoginForm({
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [erro, setErro] = useState("");
+  const [info, setInfo] = useState("");
   const [carregando, setCarregando] = useState(false);
   const emailRef = useRef<HTMLInputElement | null>(null);
+
+  // Troca obrigatória de senha (senha provisória)
+  const [trocar, setTrocar] = useState<{ token: string; nome: string; senhaAtual: string } | null>(null);
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirma, setConfirma] = useState("");
 
   // Foco inicial no e-mail.
   useEffect(() => { emailRef.current?.focus(); }, []);
@@ -81,12 +89,44 @@ export default function LoginForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setCarregando(true);
-    setErro("");
+    setErro(""); setInfo("");
     try {
       const { accessToken, usuario } = await apiLogin(email, senha);
-      onLogin(accessToken, usuario.nome);
+      if (usuario.precisaTrocarSenha) {
+        setTrocar({ token: accessToken, nome: usuario.nome, senhaAtual: senha });
+      } else {
+        onLogin(accessToken, usuario.nome);
+      }
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao conectar com o servidor.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  async function esqueciSenha() {
+    setErro(""); setInfo("");
+    if (!email) { setErro("Informe o e-mail para recuperar a senha."); return; }
+    try {
+      await apiSolicitarReset(email);
+      setInfo("Se o e-mail existir, a senha provisória Infobridge@2026 foi definida. Entre com ela — será exigida a troca da senha.");
+    } catch {
+      setInfo("Se o e-mail existir, a senha provisória Infobridge@2026 foi definida. Entre com ela — será exigida a troca da senha.");
+    }
+  }
+
+  async function confirmarTroca(e: React.FormEvent) {
+    e.preventDefault();
+    if (!trocar) return;
+    setErro("");
+    if (!senhaForte(novaSenha)) { setErro("Senha fraca: 8+ caracteres com maiúscula, número e símbolo (!@#$%^&*)."); return; }
+    if (novaSenha !== confirma) { setErro("As senhas não conferem."); return; }
+    setCarregando(true);
+    try {
+      await apiPost("/auth/alterar-senha", trocar.token, { senhaAtual: trocar.senhaAtual, novaSenha });
+      onLogin(trocar.token, trocar.nome);
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao trocar a senha.");
     } finally {
       setCarregando(false);
     }
@@ -117,6 +157,32 @@ export default function LoginForm({
     display: "block",
     marginBottom: 5,
   };
+
+  // Tela de troca obrigatória de senha (senha provisória)
+  if (trocar) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#E9EBEF", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: SANS }}>
+        <div style={{ background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 18, boxShadow: "0 12px 40px rgba(30,32,40,.10)", padding: 32, width: "100%", maxWidth: 400 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: "#1F2024", margin: "0 0 6px" }}>Defina uma nova senha</h1>
+          <p style={{ fontSize: 13, color: "#5A5D65", margin: "0 0 18px" }}>Sua senha é provisória. Crie uma nova para continuar, <b>{trocar.nome}</b>.</p>
+          <form onSubmit={confirmarTroca} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={label}>Nova senha</label>
+              <input type="password" autoComplete="new-password" style={input} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="8+ com maiúscula, número e símbolo" required />
+            </div>
+            <div>
+              <label style={label}>Confirmar nova senha</label>
+              <input type="password" autoComplete="new-password" style={input} value={confirma} onChange={(e) => setConfirma(e.target.value)} required />
+            </div>
+            {erro && <p role="alert" aria-live="assertive" style={{ color: VERMELHO, fontSize: 12, margin: 0 }}>{erro}</p>}
+            <button disabled={carregando} style={{ width: "100%", background: VINHO, color: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 600, border: "none", cursor: carregando ? "default" : "pointer", opacity: carregando ? 0.6 : 1, fontFamily: SANS }}>
+              {carregando ? "Salvando…" : "Salvar e entrar"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -263,13 +329,14 @@ export default function LoginForm({
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                 <label htmlFor="lf-senha" style={{ ...label, marginBottom: 0 }}>Senha</label>
-                <a
+                <button
+                  type="button"
+                  onClick={esqueciSenha}
                   className="lf-link"
-                  href={`mailto:${emailSuporte}?subject=Recupera%C3%A7%C3%A3o%20de%20senha`}
-                  style={{ fontSize: 11.5, color: VINHO, textDecoration: "none", fontWeight: 600 }}
+                  style={{ fontSize: 11.5, color: VINHO, background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0, fontFamily: SANS }}
                 >
                   Esqueci minha senha
-                </a>
+                </button>
               </div>
               <div style={{ position: "relative" }}>
                 <i
@@ -328,6 +395,12 @@ export default function LoginForm({
               <p role="alert" aria-live="assertive" style={{ display: "flex", alignItems: "center", gap: 6, color: VERMELHO, fontSize: 12.5, margin: 0 }}>
                 <i className="ti ti-alert-triangle" aria-hidden="true" style={{ fontSize: 15 }} />
                 {erro}
+              </p>
+            )}
+            {info && (
+              <p role="status" style={{ display: "flex", alignItems: "flex-start", gap: 6, color: "#15803D", fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
+                <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 15, marginTop: 1 }} />
+                {info}
               </p>
             )}
 
