@@ -226,7 +226,7 @@ export default function LoginForm({
             }}
           />
           <div style={{ position: "relative" }}>
-            <LogoInfobridge height={42} cor="#fff" />
+            <LogoInfobridge height={96} cor="#fff" variante="full" />
           </div>
           <div style={{ position: "relative" }}>
             <div
