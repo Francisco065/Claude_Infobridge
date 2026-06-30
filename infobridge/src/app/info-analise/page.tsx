@@ -419,35 +419,31 @@ export default function InfoAnalisePage() {
 
         /* Layout responsivo */
         .ib-page { padding: 0; }
-        .ib-layout { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
-        .ib-pos-comp { grid-column: 1; grid-row: 1; }
-        .ib-pos-nota { grid-column: 2; grid-row: 1; }
-        .ib-pos-viagem { grid-column: 1; grid-row: 2; }
-        .ib-pos-acel { grid-column: 2; grid-row: 2 / span 2; }
-        .ib-pos-rodagem { grid-column: 1; grid-row: 3; }
-        .ib-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px; margin-bottom: 18px; align-items: start; }
-        .ib-cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
-        .ib-cards4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
+        /* Coluna principal + barra lateral (Nota / Acelerador empilhados) */
+        .ib-layout { display: flex; gap: 16px; align-items: flex-start; }
+        .ib-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+        .ib-side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+        .ib-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+        .ib-cards-comp { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+        .ib-cards-sm { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .ib-select { min-width: 360px; max-width: 100%; }
 
         /* Tablet / telas médias */
         @media (max-width: 900px) {
-          .ib-layout { grid-template-columns: 1fr; }
-          .ib-pos-comp, .ib-pos-nota, .ib-pos-viagem, .ib-pos-acel, .ib-pos-rodagem {
-            grid-column: auto; grid-row: auto;
-          }
-          .ib-split { grid-template-columns: 1fr; }
-          .ib-cards4 { grid-template-columns: repeat(2, 1fr); }
+          .ib-layout { flex-direction: column; }
+          .ib-side { width: 100%; }
+          .ib-cards-comp { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
         }
         /* Celular */
         @media (max-width: 640px) {
           .ib-page { padding: 0; }
-          .ib-cards3 { grid-template-columns: repeat(2, 1fr); }
+          .ib-row2 { grid-template-columns: 1fr; }
+          .ib-cards-sm { grid-template-columns: 1fr; }
           .ib-select { min-width: 0; width: 100%; }
           .ib-header { flex-wrap: wrap; gap: 12px; }
         }
         @media (max-width: 420px) {
-          .ib-cards3, .ib-cards4 { grid-template-columns: 1fr; }
+          .ib-cards-comp { grid-template-columns: 1fr 1fr; }
         }
       `}</style>
 
@@ -531,7 +527,7 @@ export default function InfoAnalisePage() {
         </div>
 
         {/* Conteúdo */}
-        <div style={{ background: "#F6F7F9", padding: 24 }}>
+        <div style={{ background: "#F6F7F9", padding: 16 }}>
           {carregando && <div style={{ textAlign: "center", padding: 80, color: "#6B6E76" }}>Carregando dados...</div>}
           {erro && <div role="alert" style={{ background: TINT.vermelho, border: `1px solid ${VERMELHO}33`, borderRadius: 12, padding: 16, color: VERMELHO, fontSize: 14, marginBottom: 20 }}>{erro}</div>}
 
@@ -546,103 +542,109 @@ export default function InfoAnalisePage() {
 
           {d && (
             <div className="ib-layout">
-              {/* Comportamento de Condução — esquerda, linha 1 */}
-              <div className="ib-pos-comp">
-                <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
-                <div className="ib-cards3">
-                  <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
-                  <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
-                  <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
-                  <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
-                  <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
-                  <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
-                  <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
-                  <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
-                  <CardMovimento movimentoS={num(d.tempoMovimentoS)} paradoS={num(d.tempoParadoS)} semDados={semDados} />
+              {/* Coluna principal: Comportamento + (Viagem | Rodagem) */}
+              <div className="ib-main">
+                {/* Comportamento de Condução */}
+                <div>
+                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
+                  <div className="ib-cards-comp">
+                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
+                    <CardMovimento movimentoS={num(d.tempoMovimentoS)} paradoS={num(d.tempoParadoS)} semDados={semDados} />
+                  </div>
                 </div>
-              </div>
 
-              {/* Nota de Desempenho — direita, linha 1 (alinhada ao Comportamento) */}
-              <div className="ib-pos-nota" style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
-                <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
-                <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
-                  <Gauge nota={Math.round(num(d.notaDesempenho))} semDados={semDados} />
-                </div>
-                <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
-                  {[
-                    ["Marca", d.veiculo?.marca], ["Ano", d.veiculo?.anoFabricacao],
-                    ["Frota", d.veiculo?.frota], ["Modelo", d.veiculo?.modelo],
-                  ].map(([k, v]) => (
-                    <div key={String(k)} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span style={{ fontSize: 12, color: "#6B6E76" }}>{k}</span>
-                      <span style={{ fontSize: 12, color: "#33363D", fontWeight: 700, textAlign: "right" }}>{v ?? "—"}</span>
+                {/* Dados da Viagem e Rodagem & Frenagem — lado a lado */}
+                <div className="ib-row2">
+                  <div>
+                    <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
+                    <div className="ib-cards-sm">
+                      <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                      <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+                      <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+                      <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
                     </div>
-                  ))}
+                  </div>
+                  <div>
+                    <TituloSecao icone="ti-disc">Rodagem &amp; Frenagem</TituloSecao>
+                    <div className="ib-cards-sm">
+                      <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+                      <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
+                        rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+                      <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
+                        rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+                      <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Dados da Viagem — esquerda, linha 2 */}
-              <div className="ib-pos-viagem">
-                <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
-                <div className="ib-cards4">
-                  <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-                  <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
-                  <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
-                  <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-                </div>
-              </div>
-
-              {/* Pressão do Acelerador — direita, linha 2 (alinhada a Dados da Viagem) */}
-              <div className="ib-pos-acel" style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
-                  <TituloSecao>Pressão do Acelerador</TituloSecao>
-                  <button
-                    type="button"
-                    aria-label="Legenda de cores: verde bom, amarelo atenção, vermelho crítico"
-                    aria-expanded={tooltipAcel}
-                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", position: "relative", marginTop: -8, color: "#B4B7BE", lineHeight: 1 }}
-                    onMouseEnter={() => setTooltipAcel(true)}
-                    onMouseLeave={() => setTooltipAcel(false)}
-                    onFocus={() => setTooltipAcel(true)}
-                    onBlur={() => setTooltipAcel(false)}
-                    onClick={() => setTooltipAcel(v => !v)}
-                    onKeyDown={(e) => { if (e.key === "Escape") setTooltipAcel(false); }}
-                  >
-                    <i className="ti ti-info-circle" aria-hidden style={{ fontSize: 16 }} />
-                    {tooltipAcel && (
-                      <div role="tooltip" style={{
-                        position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
-                        borderRadius: 10, padding: "11px 12px", fontSize: 12, width: 178, lineHeight: 1.5,
-                        boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease", textAlign: "left",
-                      }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-circle-check-filled" aria-hidden style={{ fontSize: 14, color: VERDE }} />Verde — Bom</span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-triangle-filled" aria-hidden style={{ fontSize: 14, color: AMARELO }} />Amarelo — Atenção</span>
-                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-octagon-filled" aria-hidden style={{ fontSize: 14, color: VERMELHO }} />Vermelho — Crítico</span>
-                        </div>
+              {/* Barra lateral: Nota de Desempenho e Pressão do Acelerador empilhados */}
+              <aside className="ib-side">
+                {/* Nota de Desempenho */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                  <TituloSecao icone="ti-gauge">Nota de Desempenho</TituloSecao>
+                  <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 12px" }}>
+                    <Gauge nota={Math.round(num(d.notaDesempenho))} semDados={semDados} />
+                  </div>
+                  <div style={{ borderTop: "1px solid #EDEFF2", paddingTop: 12, display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      ["Marca", d.veiculo?.marca], ["Ano", d.veiculo?.anoFabricacao],
+                      ["Frota", d.veiculo?.frota], ["Modelo", d.veiculo?.modelo],
+                    ].map(([k, v]) => (
+                      <div key={String(k)} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <span style={{ fontSize: 12, color: "#6B6E76" }}>{k}</span>
+                        <span style={{ fontSize: 12, color: "#33363D", fontWeight: 700, textAlign: "right" }}>{v ?? "—"}</span>
                       </div>
-                    )}
-                  </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ marginTop: 6 }}>
-                  <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
-                  <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
-                  <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
-                </div>
-              </div>
 
-              {/* Rodagem & Frenagem — esquerda, linha 3 */}
-              <div className="ib-pos-rodagem">
-                <TituloSecao icone="ti-disc">Rodagem & Frenagem</TituloSecao>
-                <div className="ib-cards4">
-                  <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
-                  <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
-                    rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
-                  <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
-                    rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-                  <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
+                {/* Pressão do Acelerador */}
+                <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
+                    <TituloSecao>Pressão do Acelerador</TituloSecao>
+                    <button
+                      type="button"
+                      aria-label="Legenda de cores: verde bom, amarelo atenção, vermelho crítico"
+                      aria-expanded={tooltipAcel}
+                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", position: "relative", marginTop: -8, color: "#B4B7BE", lineHeight: 1 }}
+                      onMouseEnter={() => setTooltipAcel(true)}
+                      onMouseLeave={() => setTooltipAcel(false)}
+                      onFocus={() => setTooltipAcel(true)}
+                      onBlur={() => setTooltipAcel(false)}
+                      onClick={() => setTooltipAcel(v => !v)}
+                      onKeyDown={(e) => { if (e.key === "Escape") setTooltipAcel(false); }}
+                    >
+                      <i className="ti ti-info-circle" aria-hidden style={{ fontSize: 16 }} />
+                      {tooltipAcel && (
+                        <div role="tooltip" style={{
+                          position: "absolute", top: 22, right: 0, zIndex: 20, background: "#1F2024", color: "#fff",
+                          borderRadius: 10, padding: "11px 12px", fontSize: 12, width: 178, lineHeight: 1.5,
+                          boxShadow: "0 10px 30px rgba(0,0,0,.25)", animation: "fadeUp .15s ease", textAlign: "left",
+                        }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-circle-check-filled" aria-hidden style={{ fontSize: 14, color: VERDE }} />Verde — Bom</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-triangle-filled" aria-hidden style={{ fontSize: 14, color: AMARELO }} />Amarelo — Atenção</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><i className="ti ti-alert-octagon-filled" aria-hidden style={{ fontSize: 14, color: VERMELHO }} />Vermelho — Crítico</span>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
+                    <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
+                    <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
+                  </div>
                 </div>
-              </div>
+              </aside>
             </div>
           )}
         </div>
