@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch, salvarSessao, carregarSessao, limparSessao, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin } from "@/lib/api";
+import { apiFetch, salvarSessao, carregarSessao, limparSessao, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin, ehAdminTotal } from "@/lib/api";
 import SemAcesso from "@/components/SemAcesso";
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
@@ -503,6 +503,11 @@ export default function InfoAnalisePage() {
               {ehGestorOuAdmin() && (
                 <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                   <i className="ti ti-users" aria-hidden style={{ fontSize: 16 }} />Usuários
+                </a>
+              )}
+              {ehAdminTotal() && (
+                <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                  <i className="ti ti-building-warehouse" aria-hidden style={{ fontSize: 16 }} />Empresas
                 </a>
               )}
 

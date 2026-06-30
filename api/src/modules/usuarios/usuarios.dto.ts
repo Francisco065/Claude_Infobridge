@@ -1,6 +1,6 @@
 import {
   IsString, IsEmail, IsEnum, IsOptional, IsBoolean,
-  IsNotEmpty, MinLength, MaxLength, Matches, Length, IsArray,
+  IsNotEmpty, MinLength, MaxLength, Matches, Length, IsArray, IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UsuarioPerfil } from '../../database/entities/enums';
@@ -32,6 +32,10 @@ export class CriarUsuarioDto {
   @ApiPropertyOptional({ description: 'Telas liberadas (quando acessoTotal=false)', type: [String] })
   @IsOptional() @IsArray() @IsString({ each: true })
   telas?: string[];
+
+  @ApiPropertyOptional({ description: 'UUID da empresa (cliente) vinculada ao usuário' })
+  @IsOptional() @IsUUID()
+  empresaId?: string;
 }
 
 export class AtualizarUsuarioDto {
@@ -58,6 +62,10 @@ export class AtualizarUsuarioDto {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional() @IsArray() @IsString({ each: true })
   telas?: string[];
+
+  @ApiPropertyOptional({ description: 'UUID da empresa (cliente) vinculada ao usuário' })
+  @IsOptional() @IsUUID()
+  empresaId?: string;
 }
 
 export class RedefinirSenhaAdminDto {

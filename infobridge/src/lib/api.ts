@@ -119,6 +119,37 @@ export function ehGestorOuAdmin(): boolean {
   return p === "admin" || p === "gestor";
 }
 
+// Administrador interno Infobridge com acesso total — única condição para ver "Empresas".
+export function ehAdminTotal(): boolean {
+  const p = permissoesDaSessao();
+  return p.perfil === "admin" && p.acessoTotal;
+}
+
+// ── Tipos de Empresa (cliente) ────────────────────────────────
+export type ResponsavelEmpresa = { nome: string; email?: string; telefone?: string };
+
+export type Empresa = {
+  id: string;
+  cnpj?: string;
+  nome: string;
+  nomeFantasia?: string;
+  endereco?: string;
+  representanteComercial?: string;
+  tipo: "transportadora" | "embarcador" | "consultoria" | "outros";
+  responsaveis: ResponsavelEmpresa[];
+  ativo: boolean;
+  veiculos?: { id: string; placa?: string }[];
+  totalVeiculos?: number;
+  totalMotoristas?: number;
+};
+
+export const EMPRESA_TIPOS = [
+  { v: "transportadora", label: "Transportadora" },
+  { v: "embarcador", label: "Embarcador" },
+  { v: "consultoria", label: "Consultoria" },
+  { v: "outros", label: "Outros" },
+] as const;
+
 export async function apiPatch<T>(path: string, token: string, body: unknown): Promise<T> {
   const res = await fetch(`${PROXY}${path}`, {
     method: "PATCH",

@@ -12,6 +12,7 @@ export * from './enums';
 
 export { Tenant }                  from './tenant.entity';
 export { Usuario }                 from './usuario.entity';
+export { Empresa }                 from './empresa.entity';
 export { CredencialIntegracao }    from './credencial-integracao.entity';
 export { Veiculo }                 from './veiculo.entity';
 export { Motorista }               from './motorista.entity';
@@ -25,6 +26,7 @@ export { NotaGerada }              from './nota-gerada.entity';
 // ── Lista para TypeOrmModule.forFeature() ─────────────────────────
 import { Tenant }                  from './tenant.entity';
 import { Usuario }                 from './usuario.entity';
+import { Empresa }                 from './empresa.entity';
 import { CredencialIntegracao }    from './credencial-integracao.entity';
 import { Veiculo }                 from './veiculo.entity';
 import { Motorista }               from './motorista.entity';
@@ -38,6 +40,7 @@ import { NotaGerada }              from './nota-gerada.entity';
 export const ALL_ENTITIES = [
   Tenant,
   Usuario,
+  Empresa,
   CredencialIntegracao,
   Veiculo,
   Motorista,

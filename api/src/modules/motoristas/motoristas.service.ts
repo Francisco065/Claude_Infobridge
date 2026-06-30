@@ -72,6 +72,7 @@ export class MotoristasService {
       telefone:    dto.telefone,
       cnh:         dto.cnh,
       categoriaCnh: dto.categoriaCnh,
+      empresaId:   dto.empresaId ?? null,
       ativo:       true,
     });
 

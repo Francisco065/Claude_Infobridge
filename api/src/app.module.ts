@@ -12,6 +12,7 @@ import { ALL_ENTITIES }        from './database/entities';
 import { AuthModule }       from './auth/auth.module';
 import { TenantsModule }    from './modules/tenants/tenants.module';
 import { UsuariosModule }   from './modules/usuarios/usuarios.module';
+import { EmpresasModule }   from './modules/empresas/empresas.module';
 import { VeiculosModule }   from './modules/veiculos/veiculos.module';
 import { MotoristasModule } from './modules/motoristas/motoristas.module';
 import { TelemetriaModule } from './modules/telemetria/telemetria.module';
@@ -55,6 +56,7 @@ import { HealthModule }     from './modules/health/health.module';
     AuthModule,
     TenantsModule,
     UsuariosModule,
+    EmpresasModule,
     VeiculosModule,
     MotoristasModule,
     TelemetriaModule,

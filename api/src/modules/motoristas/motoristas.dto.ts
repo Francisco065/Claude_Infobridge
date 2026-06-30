@@ -28,6 +28,10 @@ export class CriarMotoristaDto {
   @ApiPropertyOptional({ example: 'E', description: 'Categoria da CNH' })
   @IsOptional() @IsString() @Length(1, 5)
   categoriaCnh?: string;
+
+  @ApiPropertyOptional({ description: 'UUID da empresa (cliente) à qual o motorista pertence' })
+  @IsOptional() @IsUUID()
+  empresaId?: string;
 }
 
 export class AtualizarMotoristaDto extends PartialType(CriarMotoristaDto) {

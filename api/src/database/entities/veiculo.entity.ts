@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { TipoDispositivo }          from './enums';
 import { Tenant }                    from './tenant.entity';
+import { Empresa }                   from './empresa.entity';
 import { VinculoMotoristaVeiculo }   from './vinculo-motorista-veiculo.entity';
 
 @Entity('veiculos')
@@ -24,6 +25,10 @@ export class Veiculo {
 
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
+
+  /** Empresa (cliente) dona do veículo. Nullable até ser vinculado. */
+  @Column({ name: 'empresa_id', type: 'uuid', nullable: true })
+  empresaId: string;
 
   /**
    * ID do veículo no sistema Multiportal (campo "id" do objeto Veiculo).
@@ -102,6 +107,10 @@ export class Veiculo {
   @ManyToOne(() => Tenant, (t) => t.veiculos, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
+
+  @ManyToOne(() => Empresa, (e) => e.veiculos, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'empresa_id' })
+  empresa: Empresa;
 
   @OneToMany(() => VinculoMotoristaVeiculo, (v) => v.veiculo)
   vinculos: VinculoMotoristaVeiculo[];

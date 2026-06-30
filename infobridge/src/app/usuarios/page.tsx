@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   apiFetch, apiPost, apiPatch, salvarSessao, carregarSessao, limparSessao,
-  permissoesDaSessao, podeAcessar, ehGestorOuAdmin, TELAS,
+  permissoesDaSessao, podeAcessar, ehGestorOuAdmin, ehAdminTotal, TELAS,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
@@ -322,6 +322,11 @@ export default function UsuariosPage() {
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
                 <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
               </span>
+              {ehAdminTotal() && (
+                <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                  <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas
+                </a>
+              )}
             </nav>
             {cadNavAberto && <div onClick={() => setCadNavAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 30, background: "transparent" }} />}
           </div>

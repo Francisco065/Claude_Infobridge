@@ -22,6 +22,10 @@ export class Usuario {
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
 
+  /** Empresa (cliente) à qual o usuário está vinculado. Nulo = sem vínculo (ex.: admin interno). */
+  @Column({ name: 'empresa_id', type: 'uuid', nullable: true })
+  empresaId: string;
+
   @Column({ length: 200 })
   nome: string;
 

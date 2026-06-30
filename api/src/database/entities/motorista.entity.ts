@@ -13,6 +13,7 @@ import {
   Unique,
 } from 'typeorm';
 import { Tenant }                  from './tenant.entity';
+import { Empresa }                 from './empresa.entity';
 import { VinculoMotoristaVeiculo } from './vinculo-motorista-veiculo.entity';
 import { IndicadorPeriodo }        from './indicador-periodo.entity';
 import { PontuacaoPeriodo }        from './pontuacao-periodo.entity';
@@ -27,6 +28,10 @@ export class Motorista {
 
   @Column({ name: 'tenant_id', type: 'uuid' })
   tenantId: string;
+
+  /** Empresa (cliente) à qual o motorista pertence. */
+  @Column({ name: 'empresa_id', type: 'uuid', nullable: true })
+  empresaId: string;
 
   /**
    * ID do motorista no sistema Multiportal.
@@ -60,6 +65,10 @@ export class Motorista {
   @ManyToOne(() => Tenant, (t) => t.motoristas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
+
+  @ManyToOne(() => Empresa, (e) => e.motoristas, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'empresa_id' })
+  empresa: Empresa;
 
   @OneToMany(() => VinculoMotoristaVeiculo, (v) => v.motorista)
   vinculos: VinculoMotoristaVeiculo[];

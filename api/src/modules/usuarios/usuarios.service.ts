@@ -53,6 +53,7 @@ export class UsuariosService {
       perfil: dto.perfil ?? UsuarioPerfil.OPERADOR, ativo: true,
       acessoTotal: dto.acessoTotal ?? false,
       telas: dto.acessoTotal ? [] : (dto.telas ?? []),
+      empresaId: dto.empresaId ?? null,
     });
 
     this.logger.log(`Usuário criado: ${usuario.email} [tenant: ${tenantId}]`);
@@ -82,6 +83,7 @@ export class UsuariosService {
       ativo: dto.ativo ?? usuario.ativo,
       acessoTotal,
       telas: acessoTotal ? [] : (dto.telas ?? usuario.telas ?? []),
+      empresaId: dto.empresaId !== undefined ? dto.empresaId : usuario.empresaId,
     });
     return this.buscarPorId(tenantId, id);
   }

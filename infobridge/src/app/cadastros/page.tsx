@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  apiFetch, apiPost, apiDelete, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin,
+  apiFetch, apiPost, apiDelete, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin, ehAdminTotal,
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
@@ -111,18 +111,21 @@ function LogoInfobridge({ height = 34 }: { height?: number }) {
 
 
 // ── Modal: Novo motorista (CPF e Telefone obrigatórios) ───────
-function ModalNovoMotorista({ onFechar, onCriar, salvando }: {
+function ModalNovoMotorista({ onFechar, onCriar, salvando, empresas, exigeEmpresa }: {
   onFechar: () => void;
-  onCriar: (dados: { nome: string; cpf: string; telefone: string; cnh: string }) => void;
+  onCriar: (dados: { nome: string; cpf: string; telefone: string; cnh: string; empresaId?: string }) => void;
   salvando: boolean;
+  empresas: { id: string; nome: string }[];
+  exigeEmpresa: boolean;
 }) {
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
   const [cnh, setCnh] = useState("");
+  const [empresaId, setEmpresaId] = useState("");
 
   const cpfRealInvalido = cpf.replace(/\D/g, "").length === 11 && !validarCpf(cpf);
-  const podeCriar = nome.trim().length >= 3 && validarCpf(cpf) && telefoneValido(telefone);
+  const podeCriar = nome.trim().length >= 3 && validarCpf(cpf) && telefoneValido(telefone) && (!exigeEmpresa || !!empresaId);
 
   const input: React.CSSProperties = {
     width: "100%", boxSizing: "border-box", background: "#FFFFFF", border: "1px solid #E2E4E9",
@@ -165,6 +168,16 @@ function ModalNovoMotorista({ onFechar, onCriar, salvando }: {
             <label htmlFor="nm-cnh" style={label}>CNH <span style={{ color: "#A4A7AE", fontWeight: 400 }}>(opcional)</span></label>
             <input id="nm-cnh" style={{ ...input, fontFamily: MONO }} value={cnh} onChange={(e) => setCnh(e.target.value)} placeholder="0000000000" />
           </div>
+          {exigeEmpresa && (
+            <div>
+              <label htmlFor="nm-emp" style={label}>Empresa <span style={{ color: VINHO }}>*</span></label>
+              <select id="nm-emp" style={input} value={empresaId} onChange={(e) => setEmpresaId(e.target.value)}>
+                <option value="">Selecione a empresa…</option>
+                {empresas.map((emp) => <option key={emp.id} value={emp.id}>{emp.nome}</option>)}
+              </select>
+              {empresas.length === 0 && <span style={{ fontSize: 11, color: VERMELHO, display: "block", marginTop: 3 }}>Nenhuma empresa cadastrada. Cadastre uma empresa antes.</span>}
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11.5, color: "#6B6E76", lineHeight: 1.5 }}>
             <i className="ti ti-info-circle" aria-hidden="true" style={{ fontSize: 14, marginTop: 1, flexShrink: 0, color: "#8A8D96" }} />
             CPF e telefone identificam o motorista nos relatórios e evitam cadastros duplicados.
@@ -172,7 +185,7 @@ function ModalNovoMotorista({ onFechar, onCriar, salvando }: {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "16px 22px", borderTop: "1px solid #EDEFF2", background: "#FAFBFC" }}>
           <button onClick={onFechar} style={{ background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "9px 16px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS, fontWeight: 500 }}>Cancelar</button>
-          <button onClick={() => podeCriar && onCriar({ nome: nome.trim(), cpf: cpf.trim(), telefone: telefone.trim(), cnh: cnh.trim() })}
+          <button onClick={() => podeCriar && onCriar({ nome: nome.trim(), cpf: cpf.trim(), telefone: telefone.trim(), cnh: cnh.trim(), empresaId: empresaId || undefined })}
             disabled={!podeCriar || salvando}
             style={{ display: "inline-flex", alignItems: "center", gap: 7, background: VINHO, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: !podeCriar || salvando ? "not-allowed" : "pointer", fontFamily: SANS, whiteSpace: "nowrap", opacity: !podeCriar || salvando ? 0.5 : 1 }}>
             <i className="ti ti-check" aria-hidden="true" style={{ fontSize: 16 }} />{salvando ? "Salvando…" : "Criar motorista"}
@@ -190,6 +203,7 @@ export default function CadastrosPage() {
 
   const [motoristas, setMotoristas] = useState<Motorista[]>([]);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string }[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
@@ -235,6 +249,13 @@ export default function CadastrosPage() {
       });
       setMotoristas(motos);
       setVeiculos(veics);
+      // Empresas só para admin com acesso total (exigidas no cadastro de motorista).
+      if (ehAdminTotal()) {
+        try {
+          const emp = await apiFetch<{ id: string; nome: string }[]>("/empresas", tk);
+          setEmpresas(Array.isArray(emp) ? emp : []);
+        } catch { /* silencioso: não bloqueia cadastros se /empresas falhar */ }
+      }
     } catch (e: any) {
       const msg = e?.message ?? "Erro ao carregar cadastros";
       if (/401|403/.test(msg)) { limparSessao(); setToken(null); }
@@ -328,12 +349,13 @@ export default function CadastrosPage() {
   }, [veiculos, buscaVei]);
 
   // ── Ações ───────────────────────────────────────────────────
-  async function criarMotorista(dados: { nome: string; cpf: string; telefone: string; cnh: string }) {
+  async function criarMotorista(dados: { nome: string; cpf: string; telefone: string; cnh: string; empresaId?: string }) {
     if (!token) return;
     setSalvandoMoto(true); setErro(""); setAviso("");
     try {
       const body: Record<string, string> = { nome: dados.nome, cpf: dados.cpf, telefone: dados.telefone };
       if (dados.cnh) body.cnh = dados.cnh;
+      if (dados.empresaId) body.empresaId = dados.empresaId;
       const novo = await apiPost<Motorista>("/motoristas", token, body);
       setAviso(`Motorista “${novo.nome ?? dados.nome}” criado.`);
       setModalAberto(false);
@@ -458,6 +480,11 @@ export default function CadastrosPage() {
                 {ehGestorOuAdmin() && (
                   <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
                     <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
+                  </a>
+                )}
+                {ehAdminTotal() && (
+                  <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}>
+                    <i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas
                   </a>
                 )}
 
@@ -723,7 +750,7 @@ export default function CadastrosPage() {
       </div>
 
       {modalAberto && (
-        <ModalNovoMotorista onFechar={() => setModalAberto(false)} onCriar={criarMotorista} salvando={salvandoMoto} />
+        <ModalNovoMotorista onFechar={() => setModalAberto(false)} onCriar={criarMotorista} salvando={salvandoMoto} empresas={empresas} exigeEmpresa={ehAdminTotal()} />
       )}
     </div>
   );

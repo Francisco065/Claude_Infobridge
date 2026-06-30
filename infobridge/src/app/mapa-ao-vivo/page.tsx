@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  apiFetch, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin,
+  apiFetch, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin, ehAdminTotal,
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
@@ -386,6 +386,7 @@ export default function MapaAoVivoPage() {
             <a href="/cadastros" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-folder" aria-hidden="true" style={{ fontSize: 16 }} />Cadastros</a>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-map-pin" aria-hidden="true" style={{ fontSize: 16 }} />Mapa ao vivo</span>
             {ehGestorOuAdmin() && <a href="/usuarios" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários</a>}
+            {ehAdminTotal() && <a href="/empresas" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", textDecoration: "none", fontWeight: 500, padding: "8px 12px", borderRadius: 9 }}><i className="ti ti-building-warehouse" aria-hidden="true" style={{ fontSize: 16 }} />Empresas</a>}
           </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

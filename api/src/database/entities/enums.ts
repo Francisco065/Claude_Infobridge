@@ -19,6 +19,14 @@ export enum UsuarioPerfil {
   READONLY = 'readonly',
 }
 
+// ── Empresa (cliente) ─────────────────────────────────────────
+export enum EmpresaTipo {
+  TRANSPORTADORA = 'transportadora',
+  EMBARCADOR     = 'embarcador',
+  CONSULTORIA    = 'consultoria',
+  OUTROS         = 'outros',
+}
+
 // ── Veiculo ───────────────────────────────────────────────────
 export enum TipoDispositivo {
   CAN  = 'CAN',
