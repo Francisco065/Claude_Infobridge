@@ -6,6 +6,7 @@ import {
   permissoesDaSessao, podeAcessar, ehGestorOuAdmin, TELAS,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
+import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 
 // ── Paleta / tipografia ───────────────────────────────────────
 const VINHO = "#6E1414";
@@ -171,48 +172,6 @@ function FormUsuario({ inicial, onSalvar, onCancelar, salvando, modoEdicao }: {
   );
 }
 
-// ── Modal: alterar a própria senha ────────────────────────────
-function ModalSenha({ token, onFechar, onOk }: { token: string; onFechar: () => void; onOk: () => void }) {
-  const [atual, setAtual] = useState("");
-  const [nova, setNova] = useState("");
-  const [conf, setConf] = useState("");
-  const [erro, setErro] = useState("");
-  const [salvando, setSalvando] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErro("");
-    if (!senhaForte(nova)) { setErro("Senha fraca: 8+ caracteres com maiúscula, número e símbolo (!@#$%^&*)."); return; }
-    if (nova !== conf) { setErro("As senhas não conferem."); return; }
-    setSalvando(true);
-    try {
-      await apiPost("/auth/alterar-senha", token, { senhaAtual: atual, novaSenha: nova });
-      onOk();
-    } catch (e: any) { setErro(e?.message ?? "Erro ao alterar a senha."); }
-    finally { setSalvando(false); }
-  }
-
-  return (
-    <div onClick={onFechar} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(24,18,18,.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Alterar senha" style={{ width: "100%", maxWidth: 380, background: "#FFFFFF", borderRadius: 16, boxShadow: "0 24px 60px rgba(20,16,16,.32)", padding: 24 }}>
-        <h3 style={{ margin: "0 0 14px", fontSize: 16, fontWeight: 700, color: "#1F2024", display: "flex", alignItems: "center", gap: 8 }}>
-          <i className="ti ti-key" aria-hidden="true" style={{ color: VINHO }} />Alterar minha senha
-        </h3>
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {erro && <div role="alert" style={{ background: "#FDF1F1", border: "1px solid #E7B0AC", borderRadius: 10, padding: 10, color: VERMELHO, fontSize: 12 }}>{erro}</div>}
-          <div><label style={labelBase}>Senha atual</label><input type="password" autoComplete="current-password" style={inputBase} value={atual} onChange={(e) => setAtual(e.target.value)} required /></div>
-          <div><label style={labelBase}>Nova senha</label><input type="password" autoComplete="new-password" style={inputBase} value={nova} onChange={(e) => setNova(e.target.value)} required placeholder="8+ com maiúscula, número e símbolo" /></div>
-          <div><label style={labelBase}>Confirmar nova senha</label><input type="password" autoComplete="new-password" style={inputBase} value={conf} onChange={(e) => setConf(e.target.value)} required /></div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button disabled={salvando} style={{ flex: 1, background: VINHO, color: "#fff", borderRadius: 10, padding: 11, fontSize: 14, fontWeight: 600, border: "none", cursor: salvando ? "default" : "pointer", opacity: salvando ? 0.6 : 1, fontFamily: SANS }}>{salvando ? "Salvando…" : "Salvar"}</button>
-            <button type="button" onClick={onFechar} style={{ background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>Cancelar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ── Página ────────────────────────────────────────────────────
 export default function UsuariosPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -226,8 +185,7 @@ export default function UsuariosPage() {
   const [busca, setBusca] = useState("");
   const [filtroPerfil, setFiltroPerfil] = useState("");
   const [filtroAtivo, setFiltroAtivo] = useState("");
-  // Trocar a própria senha
-  const [popupSenha, setPopupSenha] = useState(false);
+  const [cadNavAberto, setCadNavAberto] = useState(false);
 
   const eu = permissoesDaSessao();
   const podeGerenciar = ehGestorOuAdmin();
@@ -338,23 +296,41 @@ export default function UsuariosPage() {
             </div>
             <nav style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
               {navTelas.map((t) => (
-                <a key={t.key} href={t.href} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, textDecoration: "none" }}>
-                  <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
-                </a>
+                t.key === "cadastros" ? (
+                  <div key={t.key} style={{ position: "relative" }}>
+                    <button onClick={() => setCadNavAberto((v) => !v)} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, background: "transparent", border: "none", cursor: "pointer", fontFamily: SANS }}>
+                      <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
+                      <i className="ti ti-chevron-down" aria-hidden="true" style={{ fontSize: 14 }} />
+                    </button>
+                    {cadNavAberto && (
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 40, background: "#FFFFFF", border: "1px solid #E2E4E9", borderRadius: 10, boxShadow: "0 12px 30px rgba(30,32,40,.14)", padding: 6, minWidth: 170 }}>
+                        <a href="/cadastros" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", fontWeight: 500, padding: "8px 10px", borderRadius: 7, textDecoration: "none" }}>
+                          <i className="ti ti-user-pin" aria-hidden="true" style={{ fontSize: 16, color: VINHO }} />Motoristas
+                        </a>
+                        <a href="/cadastros?tela=vei" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#33363D", fontWeight: 500, padding: "8px 10px", borderRadius: 7, textDecoration: "none" }}>
+                          <i className="ti ti-truck" aria-hidden="true" style={{ fontSize: 16, color: VINHO }} />Veículos
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <a key={t.key} href={t.href} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "#5A5D65", fontWeight: 500, padding: "8px 12px", borderRadius: 9, textDecoration: "none" }}>
+                    <i className={`ti ${t.icone}`} aria-hidden="true" style={{ fontSize: 16 }} />{t.label}
+                  </a>
+                )
               ))}
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: VINHO, background: "#F6F2F2", fontWeight: 600, padding: "8px 12px", borderRadius: 9 }}>
                 <i className="ti ti-users" aria-hidden="true" style={{ fontSize: 16 }} />Usuários
               </span>
             </nav>
+            {cadNavAberto && <div onClick={() => setCadNavAberto(false)} style={{ position: "fixed", inset: 0, zIndex: 30, background: "transparent" }} />}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 17, color: VINHO }} />
             </span>
             <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
-            <button onClick={() => setPopupSenha(true)} title="Alterar minha senha" aria-label="Alterar minha senha" style={{ display: "flex", background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 9px", color: "#5A5D65", cursor: "pointer" }}>
-              <i className="ti ti-key" aria-hidden="true" style={{ fontSize: 15 }} />
-            </button>
+            {token && <BotaoTrocarSenha token={token} />}
             <button onClick={() => { limparSessao(); setToken(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
               <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: 15 }} /> Sair
             </button>
@@ -443,14 +419,6 @@ export default function UsuariosPage() {
           </div>
         </div>
       </div>
-
-      {popupSenha && token && (
-        <ModalSenha
-          token={token}
-          onFechar={() => setPopupSenha(false)}
-          onOk={() => { setPopupSenha(false); setAviso("Senha alterada com sucesso."); }}
-        />
-      )}
     </div>
   );
 }

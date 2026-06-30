@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, salvarSessao, carregarSessao, limparSessao, podeAcessar, primeiraTelaPermitida, ehGestorOuAdmin } from "@/lib/api";
 import SemAcesso from "@/components/SemAcesso";
 import LoginForm from "@/components/LoginForm";
+import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 
 // ── Paleta ────────────────────────────────────────────────────
 const VINHO = "#6E1414";
@@ -541,6 +542,7 @@ export default function InfoAnalisePage() {
               <i className="ti ti-user" aria-hidden style={{ fontSize: 17, color: VINHO }} />
             </span>
             <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
+            {token && <BotaoTrocarSenha token={token} />}
             <button onClick={() => { limparSessao(); setToken(null); }}
               style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
               <i className="ti ti-logout" aria-hidden style={{ fontSize: 15 }} /> Sair

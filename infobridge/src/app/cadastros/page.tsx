@@ -6,6 +6,7 @@ import {
   salvarSessao, carregarSessao, limparSessao,
 } from "@/lib/api";
 import LoginForm from "@/components/LoginForm";
+import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import SemAcesso from "@/components/SemAcesso";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise) ───────
@@ -482,6 +483,7 @@ export default function CadastrosPage() {
                 <i className="ti ti-user" aria-hidden="true" style={{ fontSize: 17, color: VINHO }} />
               </span>
               <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
+              {token && <BotaoTrocarSenha token={token} />}
               <button onClick={sair} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}>
                 <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: 15 }} /> Sair
               </button>
