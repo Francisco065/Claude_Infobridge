@@ -419,31 +419,30 @@ export default function InfoAnalisePage() {
 
         /* Layout responsivo */
         .ib-page { padding: 0; }
-        /* Coluna principal + barra lateral (Nota / Acelerador empilhados) */
-        .ib-layout { display: flex; gap: 16px; align-items: flex-start; }
-        .ib-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-        .ib-side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
-        .ib-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-        .ib-cards-comp { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-        .ib-cards-sm { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        /* Barra lateral esquerda (Nota / Acelerador) + coluna principal */
+        .ib-layout { display: grid; grid-template-columns: 264px 1fr; gap: 16px; align-items: start; }
+        .ib-side { display: flex; flex-direction: column; gap: 16px; }
+        .ib-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+        .ib-cards-comp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .ib-cards-sm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .ib-select { min-width: 360px; max-width: 100%; }
 
         /* Tablet / telas médias */
         @media (max-width: 900px) {
-          .ib-layout { flex-direction: column; }
-          .ib-side { width: 100%; }
-          .ib-cards-comp { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+          .ib-layout { grid-template-columns: 1fr; }
+          .ib-cards-comp { grid-template-columns: repeat(2, 1fr); }
+          .ib-cards-sm { grid-template-columns: repeat(2, 1fr); }
         }
         /* Celular */
         @media (max-width: 640px) {
           .ib-page { padding: 0; }
-          .ib-row2 { grid-template-columns: 1fr; }
+          .ib-cards-comp { grid-template-columns: 1fr 1fr; }
           .ib-cards-sm { grid-template-columns: 1fr; }
           .ib-select { min-width: 0; width: 100%; }
           .ib-header { flex-wrap: wrap; gap: 12px; }
         }
         @media (max-width: 420px) {
-          .ib-cards-comp { grid-template-columns: 1fr 1fr; }
+          .ib-cards-comp { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -542,50 +541,7 @@ export default function InfoAnalisePage() {
 
           {d && (
             <div className="ib-layout">
-              {/* Coluna principal: Comportamento + (Viagem | Rodagem) */}
-              <div className="ib-main">
-                {/* Comportamento de Condução */}
-                <div>
-                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
-                  <div className="ib-cards-comp">
-                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
-                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
-                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
-                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
-                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
-                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
-                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
-                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
-                    <CardMovimento movimentoS={num(d.tempoMovimentoS)} paradoS={num(d.tempoParadoS)} semDados={semDados} />
-                  </div>
-                </div>
-
-                {/* Dados da Viagem e Rodagem & Frenagem — lado a lado */}
-                <div className="ib-row2">
-                  <div>
-                    <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
-                    <div className="ib-cards-sm">
-                      <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
-                      <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
-                      <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
-                      <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
-                    </div>
-                  </div>
-                  <div>
-                    <TituloSecao icone="ti-disc">Rodagem &amp; Frenagem</TituloSecao>
-                    <div className="ib-cards-sm">
-                      <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
-                      <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
-                        rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
-                      <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
-                        rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
-                      <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Barra lateral: Nota de Desempenho e Pressão do Acelerador empilhados */}
+              {/* Barra lateral esquerda: Nota de Desempenho e Pressão do Acelerador empilhados */}
               <aside className="ib-side">
                 {/* Nota de Desempenho */}
                 <div style={{ background: "#FFFFFF", border: "1px solid #E7E9ED", borderRadius: 14, padding: 20, boxShadow: "0 1px 3px rgba(30,32,40,.04)" }}>
@@ -645,6 +601,49 @@ export default function InfoAnalisePage() {
                   </div>
                 </div>
               </aside>
+
+              {/* Coluna principal: Comportamento, Dados da Viagem, Rodagem & Frenagem */}
+              <div className="ib-main">
+                {/* Comportamento de Condução */}
+                <div>
+                  <TituloSecao icone="ti-steering-wheel">Comportamento de Condução</TituloSecao>
+                  <div className="ib-cards-comp">
+                    <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
+                    <CardComportamento nome="Freio motor" pct={num(d.percFreioMotorOk)} pol="maior" semDados={semDados} />
+                    <CardMovimento movimentoS={num(d.tempoMovimentoS)} paradoS={num(d.tempoParadoS)} semDados={semDados} />
+                  </div>
+                </div>
+
+                {/* Dados da Viagem */}
+                <div>
+                  <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
+                  <div className="ib-cards-sm">
+                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                    <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
+                    <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
+                    <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />
+                  </div>
+                </div>
+
+                {/* Rodagem & Frenagem */}
+                <div>
+                  <TituloSecao icone="ti-disc">Rodagem &amp; Frenagem</TituloSecao>
+                  <div className="ib-cards-sm">
+                    <CardStat icone="ti-refresh" rotulo="Odômetro" valor={`${num(d.odometroFinalKm).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} km`} />
+                    <CardStat icone="ti-alert-triangle" chipBg={TINT.amarelo} chipCor={AMARELO}
+                      rotulo="Freadas alta vel." valor={String(d.frenagenAltaVelocidade ?? 0)} />
+                    <CardStat icone="ti-alert-circle" chipBg={TINT.vermelho} chipCor={VERMELHO}
+                      rotulo="Freadas totais" valor={String(d.frenagensTotais ?? 0)} />
+                    <CardStat icone="ti-percentage" rotulo="Freadas / 100 km" valor={num(d.frenagensPor100km).toFixed(1)} />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
