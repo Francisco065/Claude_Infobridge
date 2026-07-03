@@ -651,6 +651,53 @@ async def recalcular_manual():
     return {'status': 'ok', 'mensagem': 'Recálculo do mês atual concluído'}
 
 
+@api.get('/debug/mes-atual')
+async def debug_mes_atual():
+    """Diagnóstico do mês corrente: leituras, pares elegíveis e indicadores."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        out = {
+            'mes': hoje.strftime('%Y-%m'),
+            'leituras_mes': await db.fetchval(
+                "SELECT COUNT(*) FROM leitura_telemetria WHERE ts >= $1", inicio),
+            'leituras_mes_com_motorista': await db.fetchval(
+                "SELECT COUNT(*) FROM leitura_telemetria WHERE ts >= $1 AND motorista_id IS NOT NULL", inicio),
+            'motoristas_distintos_mes': await db.fetchval(
+                "SELECT COUNT(DISTINCT motorista_id) FROM leitura_telemetria WHERE ts >= $1 AND motorista_id IS NOT NULL", inicio),
+            'pares_elegiveis': await db.fetchval(
+                "SELECT COUNT(*) FROM (SELECT DISTINCT tenant_id, motorista_id, veiculo_id "
+                "FROM leitura_telemetria WHERE ts >= $1 AND motorista_id IS NOT NULL) s", inicio),
+            'indicadores_mes': await db.fetchval(
+                "SELECT COUNT(*) FROM indicador_periodo WHERE periodo_inicio >= $1", inicio.date()),
+            'indicadores_mes_com_nota': await db.fetchval(
+                "SELECT COUNT(*) FROM indicador_periodo WHERE periodo_inicio >= $1 AND nota_desempenho IS NOT NULL", inicio.date()),
+        }
+        amostra = await db.fetch(
+            """
+            SELECT m.nome AS motorista, ip.periodo_inicio, ip.periodo_fim,
+                   ip.nota_desempenho, ip.km_total
+            FROM   indicador_periodo ip
+            LEFT JOIN motoristas m ON m.id = ip.motorista_id
+            WHERE  ip.periodo_inicio >= $1
+            ORDER BY ip.periodo_inicio DESC
+            LIMIT 10
+            """,
+            inicio.date(),
+        )
+        out['amostra_indicadores'] = [
+            {'motorista': r['motorista'], 'inicio': str(r['periodo_inicio']),
+             'fim': str(r['periodo_fim']),
+             'nota': float(r['nota_desempenho']) if r['nota_desempenho'] is not None else None,
+             'km': float(r['km_total']) if r['km_total'] is not None else None}
+            for r in amostra
+        ]
+    finally:
+        await db.close()
+    return out
+
+
 # ── Reprocessamento do mês atual a partir de componentes_raw ──
 
 async def _reprocessar_mes_atual() -> dict:
