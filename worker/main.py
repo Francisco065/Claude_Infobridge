@@ -294,8 +294,28 @@ async def _loop():
 
 # ── FastAPI ───────────────────────────────────────────────────
 
+async def _garantir_colunas():
+    """Garante que as colunas novas existam (independe do synchronize da API)."""
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        await db.execute(
+            """
+            ALTER TABLE leitura_telemetria
+                ADD COLUMN IF NOT EXISTS nivel_combustivel_pct numeric(5,1),
+                ADD COLUMN IF NOT EXISTS fonte_velocidade  varchar(10),
+                ADD COLUMN IF NOT EXISTS fonte_combustivel varchar(10)
+            """
+        )
+    finally:
+        await db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        await _garantir_colunas()
+    except Exception as e:
+        log.error('startup.garantir_colunas_erro', error=str(e))
     t_poll = asyncio.create_task(_loop())
     t_calc = asyncio.create_task(_loop_recalculo())
     yield
@@ -639,6 +659,7 @@ async def _reprocessar_mes_atual() -> dict:
     as leituras do mês corrente, usando o array componentes_raw já armazenado.
     Só afeta linhas que tenham componentes_raw (ingeridas após esse recurso).
     """
+    await _garantir_colunas()
     hoje = date.today()
     inicio = datetime(hoje.year, hoje.month, 1)
     db = await asyncpg.connect(cfg.database_url)
@@ -714,11 +735,20 @@ async def reprocessar_mes(recalcular: bool = True):
     Reprocessa as leituras do mês atual (fontes CAN→OBD2→GPS) a partir de
     componentes_raw e, por padrão, recalcula os indicadores em seguida.
     """
-    resultado = await _reprocessar_mes_atual()
-    if recalcular:
-        await _recalcular_mes_atual()
-        resultado['recalculo'] = 'ok'
-    return {'status': 'ok', **resultado}
+    try:
+        resultado = await _reprocessar_mes_atual()
+        if recalcular:
+            await _recalcular_mes_atual()
+            resultado['recalculo'] = 'ok'
+        return {'status': 'ok', **resultado}
+    except Exception as e:
+        import traceback
+        log.error('reprocessar.erro', error=str(e))
+        return Response(
+            content=json.dumps({'status': 'erro', 'erro': str(e),
+                                'trace': traceback.format_exc()[-1500:]}, ensure_ascii=False),
+            media_type='application/json; charset=utf-8', status_code=500,
+        )
 
 
 if __name__ == '__main__':
