@@ -162,13 +162,15 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                         consumo_inst_l, ignicao, cruise_ctrl, pedal_freio,
                         embreagem, faixa_rpm, faixa_acelerador,
                         is_motor_ocioso, is_embalo, fonte_rpm, fonte_acelerador,
-                        componentes_raw
+                        componentes_raw,
+                        nivel_combustivel_pct, fonte_velocidade, fonte_combustivel
                     ) VALUES (
                         $1::uuid, $2::uuid, $3::uuid,
                         to_timestamp($4), to_timestamp($5),
                         $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
                         $16, $17, $18, $19, $20, $21, $22, $23, $24,
-                        $25, $26, $27, $28, $29, $30, $31::jsonb
+                        $25, $26, $27, $28, $29, $30, $31::jsonb,
+                        $32, $33, $34
                     ) ON CONFLICT (tenant_id, veiculo_id, ts) DO NOTHING
                     """,
                     [(
@@ -183,6 +185,7 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                         r['is_motor_ocioso'], r['is_embalo'],
                         r['fonte_rpm'], r['fonte_acelerador'],
                         r['componentes_raw'],
+                        r['nivel_combustivel_pct'], r['fonte_velocidade'], r['fonte_combustivel'],
                     ) for r in registros],
                 )
                 total += len(registros)
@@ -626,6 +629,96 @@ async def recalcular_manual():
     """Força o recálculo dos indicadores do mês atual para todos os pares."""
     await _recalcular_mes_atual()
     return {'status': 'ok', 'mensagem': 'Recálculo do mês atual concluído'}
+
+
+# ── Reprocessamento do mês atual a partir de componentes_raw ──
+
+async def _reprocessar_mes_atual() -> dict:
+    """
+    Reaplica a extração de componentes (fontes atuais: CAN → OBD2 → GPS) sobre
+    as leituras do mês corrente, usando o array componentes_raw já armazenado.
+    Só afeta linhas que tenham componentes_raw (ingeridas após esse recurso).
+    """
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    total = 0
+    updates: list[tuple] = []
+    try:
+        rows = await db.fetch(
+            """
+            SELECT id::text AS id, veiculo_id::text AS veiculo_id,
+                   tenant_id::text AS tenant_id,
+                   (extract(epoch from ts) * 1000) AS ts_ms,
+                   velocidade AS vel_gps,
+                   componentes_raw
+            FROM   leitura_telemetria
+            WHERE  ts >= $1 AND componentes_raw IS NOT NULL
+            """,
+            inicio,
+        )
+        total = len(rows)
+        for row in rows:
+            raw = row['componentes_raw']
+            comp = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            pos = {
+                'validade': True,
+                'dataEquipamento': row['ts_ms'],
+                'velocidade': row['vel_gps'],   # fallback GPS = velocidade já gravada
+                'componentes': comp,
+            }
+            r = processar_posicao(row['veiculo_id'], None, row['tenant_id'], pos)
+            if not r:
+                continue
+            updates.append((
+                r['velocidade'], r['rpm'], r['perc_acelerador'], r['odometro_km'],
+                r['consumo_total_l'], r['consumo_inst_l'], r['nivel_combustivel_pct'],
+                r['ignicao'], r['cruise_ctrl'], r['pedal_freio'], r['embreagem'],
+                r['faixa_rpm'], r['faixa_acelerador'], r['is_motor_ocioso'], r['is_embalo'],
+                r['fonte_rpm'], r['fonte_acelerador'], r['fonte_velocidade'], r['fonte_combustivel'],
+                row['id'],
+            ))
+
+        if updates:
+            await db.executemany(
+                """
+                UPDATE leitura_telemetria SET
+                    velocidade=$1, rpm=$2, perc_acelerador=$3, odometro_km=$4,
+                    consumo_total_l=$5, consumo_inst_l=$6, nivel_combustivel_pct=$7,
+                    ignicao=$8, cruise_ctrl=$9, pedal_freio=$10, embreagem=$11,
+                    faixa_rpm=$12, faixa_acelerador=$13, is_motor_ocioso=$14, is_embalo=$15,
+                    fonte_rpm=$16, fonte_acelerador=$17, fonte_velocidade=$18, fonte_combustivel=$19
+                WHERE id=$20::uuid
+                """,
+                updates,
+            )
+
+        # Distribuição de fontes após o reprocessamento (comparativo).
+        fontes = {}
+        for campo in ('fonte_velocidade', 'fonte_rpm', 'fonte_acelerador', 'fonte_combustivel'):
+            linhas = await db.fetch(
+                f"SELECT COALESCE({campo}, '(nulo)') AS k, COUNT(*) AS n "
+                f"FROM leitura_telemetria WHERE ts >= $1 GROUP BY 1 ORDER BY 2 DESC",
+                inicio,
+            )
+            fontes[campo] = {r['k']: r['n'] for r in linhas}
+    finally:
+        await db.close()
+
+    return {'linhas_no_mes': total, 'reprocessadas': len(updates), 'fontes': fontes}
+
+
+@api.post('/jobs/reprocessar-mes')
+async def reprocessar_mes(recalcular: bool = True):
+    """
+    Reprocessa as leituras do mês atual (fontes CAN→OBD2→GPS) a partir de
+    componentes_raw e, por padrão, recalcula os indicadores em seguida.
+    """
+    resultado = await _reprocessar_mes_atual()
+    if recalcular:
+        await _recalcular_mes_atual()
+        resultado['recalculo'] = 'ok'
+    return {'status': 'ok', **resultado}
 
 
 if __name__ == '__main__':

@@ -89,25 +89,35 @@ def processar_posicao(
     if not ts_ms:
         return None
 
-    velocidade = pos.get('velocidade')
+    # ── Velocidade: CAN → OBD2 → GPS (campo top-level) ────────
+    velocidade_raw = extrair_componente(
+        componentes,
+        cfg.comp_velocidade_can,   # 9089 CAN
+        cfg.comp_velocidade_obd2,  # 9183 OBD2
+    )
+    velocidade = parsear_int(velocidade_raw)
+    if velocidade is None:
+        velocidade = pos.get('velocidade')   # fallback GPS/rastreador
 
     # ── Componentes com hierarquia dual-track ─────────────────
-    ignicao_raw  = extrair_componente(componentes, cfg.comp_ignicao)
+    # Ignição: CAN (9201) → rastreador (1)
+    ignicao_raw  = extrair_componente(componentes, cfg.comp_ignicao_can, cfg.comp_ignicao)
     ignicao      = ignicao_raw == '1' if ignicao_raw else None
 
     rpm_raw      = extrair_componente(
         componentes,
         cfg.comp_rpm_can,       # 9090 CAN
         cfg.comp_rpm_obd2,      # 9182 OBD2
-        cfg.comp_rpm_basico,    # 90   básico
+        cfg.comp_rpm_basico,    # 95   instantâneo (básico)
     )
     rpm = parsear_int(rpm_raw)
 
     acelerador_raw = extrair_componente(
         componentes,
-        cfg.comp_acelerador_can,   # 9208 CAN
-        cfg.comp_acelerador_obd2,  # 9445 OBD2
-        permitir_zero=True,        # pedal solto (0%) é valor legítimo, não "ausente"
+        cfg.comp_acelerador_can,       # 9208 CAN
+        cfg.comp_acelerador_obd2,      # 9445 OBD2
+        cfg.comp_acelerador_obd2_alt,  # 9171 OBD2 (relativa) — fallback extra
+        permitir_zero=True,            # pedal solto (0%) é valor legítimo, não "ausente"
     )
     perc_acelerador = parsear_float(acelerador_raw)
 
@@ -129,6 +139,16 @@ def processar_posicao(
         componentes,
         cfg.comp_consumo_can,  # 9092 CAN
     ))
+
+    # Nível de combustível (%) — CAN → OBD2 → Omnicomm → genérico.
+    nivel_combustivel = parsear_float(extrair_componente(
+        componentes,
+        cfg.comp_nivel_comb_pct_can,   # 9206 % CAN
+        cfg.comp_nivel_comb_obd2,      # 9179 OBD2 (% do tanque)
+        cfg.comp_nivel_comb_omnicomm,  # 9052 Omnicomm
+        cfg.comp_nivel_comb_generico,  # 9167 genérico
+    ))
+
     embreagem_raw = extrair_componente(componentes, cfg.comp_embreagem)
     embreagem     = embreagem_raw == '1' if embreagem_raw else None
 
@@ -149,7 +169,15 @@ def processar_posicao(
                        else ('OBD2' if extrair_componente(componentes, cfg.comp_rpm_obd2) \
                        else ('BASICO' if extrair_componente(componentes, cfg.comp_rpm_basico) else None))
     fonte_acelerador = 'CAN' if extrair_componente(componentes, cfg.comp_acelerador_can, permitir_zero=True) \
-                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2, permitir_zero=True) else None)
+                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2, permitir_zero=True) \
+                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2_alt, permitir_zero=True) else None))
+    fonte_velocidade = 'CAN' if extrair_componente(componentes, cfg.comp_velocidade_can) \
+                       else ('OBD2' if extrair_componente(componentes, cfg.comp_velocidade_obd2) \
+                       else ('GPS' if pos.get('velocidade') is not None else None))
+    fonte_combustivel = 'CAN' if extrair_componente(componentes, cfg.comp_nivel_comb_pct_can) \
+                       else ('OBD2' if extrair_componente(componentes, cfg.comp_nivel_comb_obd2) \
+                       else ('OMNICOMM' if extrair_componente(componentes, cfg.comp_nivel_comb_omnicomm) \
+                       else ('GENERICO' if extrair_componente(componentes, cfg.comp_nivel_comb_generico) else None)))
 
     return {
         'tenant_id':        tenant_id,
@@ -172,6 +200,7 @@ def processar_posicao(
         'odometro_km':      odometro_km,
         'consumo_total_l':  consumo_total,
         'consumo_inst_l':   consumo_inst,
+        'nivel_combustivel_pct': nivel_combustivel,
         'ignicao':          ignicao,
         'cruise_ctrl':      cruise_ctrl,
         'pedal_freio':      pedal_freio,
@@ -182,6 +211,8 @@ def processar_posicao(
         'is_embalo':        is_embalo,
         'fonte_rpm':        fonte_rpm,
         'fonte_acelerador': fonte_acelerador,
+        'fonte_velocidade': fonte_velocidade,
+        'fonte_combustivel': fonte_combustivel,
     }
 
 

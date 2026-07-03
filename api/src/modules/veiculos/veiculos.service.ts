@@ -38,7 +38,7 @@ export class VeiculosService {
              m.id AS motorista_id, m.nome AS motorista_nome
       FROM   veiculos v
       LEFT JOIN LATERAL (
-        SELECT latitude, longitude, velocidade, rpm, ignicao, ts
+        SELECT latitude, longitude, velocidade, rpm, ignicao, ts, nivel_combustivel_pct
         FROM   leitura_telemetria
         WHERE  veiculo_id = v.id
         ORDER BY ts DESC
@@ -70,7 +70,7 @@ export class VeiculosService {
       longitude: num(r.longitude),
       velocidade: num(r.velocidade),
       rpm:       num(r.rpm),
-      combustivel: null, // ainda não ingerido (fase 2)
+      combustivel: num(r.nivel_combustivel_pct), // nível % (CAN → OBD2 → …)
       ultimaComunicacao: r.ultima_comunicacao ? new Date(r.ultima_comunicacao).toISOString() : null,
     }));
 

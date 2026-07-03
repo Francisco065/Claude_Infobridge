@@ -107,9 +107,11 @@ class Settings(BaseSettings):
         )
 
     # IDs de componentes Multiportal (fontes primárias e alternativas)
-    comp_ignicao:       int = 1
+    # Ordem de preferência sempre: Rede CAN → OBD2 → GPS/básico.
+    comp_ignicao_can:   int = 9201   # Ignição CAN (preferencial)
+    comp_ignicao:       int = 1      # Ignição do rastreador (fallback)
     comp_odometro_gps:  int = 10
-    comp_rpm_basico:    int = 90
+    comp_rpm_basico:    int = 95     # RPM (Instantâneo) — fallback (antes 90 = Média)
     comp_odometro_can:  int = 9088
     comp_rpm_can:       int = 9090
     comp_consumo_can:   int = 9092
@@ -121,7 +123,18 @@ class Settings(BaseSettings):
     comp_embreagem:     int = 9226
     comp_rpm_obd2:      int = 9182
     comp_consumo_total_obd2: int = 9443
-    comp_acelerador_obd2: int = 9445
+    comp_acelerador_obd2: int = 9445      # OBD2: Posição do pedal do acelerador
+    comp_acelerador_obd2_alt: int = 9171  # OBD2: Posição relativa do pedal (fallback extra)
+
+    # Velocidade — antes só GPS (campo top-level). Agora CAN → OBD2 → GPS.
+    comp_velocidade_can:  int = 9089  # Velocidade via Rede CAN
+    comp_velocidade_obd2: int = 9183  # OBD2: Velocidade do Veículo
+
+    # Nível de combustível (%) — CAN → OBD2 → Omnicomm → genérico.
+    comp_nivel_comb_pct_can:  int = 9206  # Nível de Combustível em Percentual CAN
+    comp_nivel_comb_obd2:     int = 9179  # OBD2: Nível do tanque de combustível
+    comp_nivel_comb_omnicomm: int = 9052  # Nível de combustível (Omnicomm)
+    comp_nivel_comb_generico: int = 9167  # Nível Combustível
 
 
 @lru_cache

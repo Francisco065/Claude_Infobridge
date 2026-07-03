@@ -142,6 +142,16 @@ export class LeituraTelemetria {
   })
   consumoInstL: number;
 
+  /** Nível de combustível (%). Comp 9206 CAN → 9179 OBD2 → 9052 Omnicomm → 9167. */
+  @Column({
+    name: 'nivel_combustivel_pct',
+    type: 'numeric',
+    precision: 5,
+    scale: 1,
+    nullable: true,
+  })
+  nivelCombustivelPct: number;
+
   // ── Odômetro ──────────────────────────────────────────────
   /** Comp 9088 CAN → odometroGps top-level → comp 10. */
   @Column({
@@ -205,6 +215,14 @@ export class LeituraTelemetria {
 
   @Column({ name: 'fonte_acelerador', length: 10, nullable: true })
   fonteAcelerador: string;
+
+  /** 'CAN' | 'OBD2' | 'GPS' | null */
+  @Column({ name: 'fonte_velocidade', length: 10, nullable: true })
+  fonteVelocidade: string;
+
+  /** 'CAN' | 'OBD2' | 'OMNICOMM' | 'GENERICO' | null */
+  @Column({ name: 'fonte_combustivel', length: 10, nullable: true })
+  fonteCombustivel: string;
 
   /** Array de componentes CRU como a Multiportal envia (diagnóstico/comparação). */
   @Column({ name: 'componentes_raw', type: 'jsonb', nullable: true })
