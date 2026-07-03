@@ -111,7 +111,8 @@ class Settings(BaseSettings):
     comp_ignicao_can:   int = 9201   # Ignição CAN (preferencial)
     comp_ignicao:       int = 1      # Ignição do rastreador (fallback)
     comp_odometro_gps:  int = 10
-    comp_rpm_basico:    int = 95     # RPM (Instantâneo) — fallback (antes 90 = Média)
+    comp_rpm_basico:    int = 95     # RPM (Instantâneo) — fallback
+    comp_rpm_media:     int = 90     # RPM (Média) — último fallback
     comp_odometro_can:  int = 9088
     comp_rpm_can:       int = 9090
     comp_consumo_can:   int = 9092
@@ -123,8 +124,14 @@ class Settings(BaseSettings):
     comp_embreagem:     int = 9226
     comp_rpm_obd2:      int = 9182
     comp_consumo_total_obd2: int = 9443
-    comp_acelerador_obd2: int = 9445      # OBD2: Posição do pedal do acelerador
-    comp_acelerador_obd2_alt: int = 9171  # OBD2: Posição relativa do pedal (fallback extra)
+    # OBD2: pedal do acelerador — variantes A–F (o device pode usar qualquer uma).
+    comp_acelerador_obd2: int = 9445       # Posição do pedal do acelerador
+    comp_acelerador_obd2_alt: int = 9171   # Posição relativa do pedal
+    comp_acelerador_obd2_f: int = 9172     # Posição do Pedal F
+    comp_acelerador_obd2_e: int = 9173     # Posição do Pedal E
+    comp_acelerador_obd2_d: int = 9176     # Posição do Pedal D
+    comp_acelerador_obd2_c: int = 9177     # Posição absoluta C
+    comp_acelerador_obd2_b: int = 9178     # Posição absoluta B
 
     # Velocidade — antes só GPS (campo top-level). Agora CAN → OBD2 → GPS.
     comp_velocidade_can:  int = 9089  # Velocidade via Rede CAN

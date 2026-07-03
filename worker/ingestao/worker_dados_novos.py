@@ -108,7 +108,8 @@ def processar_posicao(
         componentes,
         cfg.comp_rpm_can,       # 9090 CAN
         cfg.comp_rpm_obd2,      # 9182 OBD2
-        cfg.comp_rpm_basico,    # 95   instantâneo (básico)
+        cfg.comp_rpm_basico,    # 95   instantâneo
+        cfg.comp_rpm_media,     # 90   média (último fallback)
     )
     rpm = parsear_int(rpm_raw)
 
@@ -116,7 +117,12 @@ def processar_posicao(
         componentes,
         cfg.comp_acelerador_can,       # 9208 CAN
         cfg.comp_acelerador_obd2,      # 9445 OBD2
-        cfg.comp_acelerador_obd2_alt,  # 9171 OBD2 (relativa) — fallback extra
+        cfg.comp_acelerador_obd2_alt,  # 9171 OBD2 (relativa)
+        cfg.comp_acelerador_obd2_f,    # 9172
+        cfg.comp_acelerador_obd2_e,    # 9173
+        cfg.comp_acelerador_obd2_d,    # 9176
+        cfg.comp_acelerador_obd2_c,    # 9177
+        cfg.comp_acelerador_obd2_b,    # 9178
         permitir_zero=True,            # pedal solto (0%) é valor legítimo, não "ausente"
     )
     perc_acelerador = parsear_float(acelerador_raw)
@@ -167,10 +173,16 @@ def processar_posicao(
     # ── Fonte das leituras (para rastreabilidade) ─────────────
     fonte_rpm        = 'CAN' if extrair_componente(componentes, cfg.comp_rpm_can) \
                        else ('OBD2' if extrair_componente(componentes, cfg.comp_rpm_obd2) \
-                       else ('BASICO' if extrair_componente(componentes, cfg.comp_rpm_basico) else None))
+                       else ('BASICO' if extrair_componente(componentes, cfg.comp_rpm_basico, cfg.comp_rpm_media) else None))
+    _acel_obd2 = extrair_componente(
+        componentes,
+        cfg.comp_acelerador_obd2, cfg.comp_acelerador_obd2_alt,
+        cfg.comp_acelerador_obd2_f, cfg.comp_acelerador_obd2_e,
+        cfg.comp_acelerador_obd2_d, cfg.comp_acelerador_obd2_c, cfg.comp_acelerador_obd2_b,
+        permitir_zero=True,
+    )
     fonte_acelerador = 'CAN' if extrair_componente(componentes, cfg.comp_acelerador_can, permitir_zero=True) \
-                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2, permitir_zero=True) \
-                       else ('OBD2' if extrair_componente(componentes, cfg.comp_acelerador_obd2_alt, permitir_zero=True) else None))
+                       else ('OBD2' if _acel_obd2 is not None else None)
     fonte_velocidade = 'CAN' if extrair_componente(componentes, cfg.comp_velocidade_can) \
                        else ('OBD2' if extrair_componente(componentes, cfg.comp_velocidade_obd2) \
                        else ('GPS' if pos.get('velocidade') is not None else None))
