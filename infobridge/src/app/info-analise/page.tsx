@@ -407,8 +407,10 @@ export default function InfoAnalisePage() {
   const atualizadoLabel = atualizadoEm
     ? atualizadoEm.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "")
     : "—";
-  // Período sem telemetria suficiente: nenhuma quilometragem registrada.
-  const semDados = !!d && num(d.kmTotal) <= 0;
+  // Período realmente vazio: sem quilometragem E sem velocidade média (parado/
+  // sem telemetria). Se houve movimento mas o odômetro não veio, ainda mostramos
+  // a nota e o comportamento — só os cards de km/consumo ficam zerados.
+  const semDados = !!d && num(d.kmTotal) <= 0 && num(d.velocidadeMediaKmh) <= 0;
 
   return (
     <div className="ib-page" style={{ minHeight: "100vh", background: "#E9EBEF", fontFamily: SANS }}>
