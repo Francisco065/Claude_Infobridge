@@ -668,8 +668,7 @@ async def _reprocessar_mes_atual() -> dict:
     try:
         rows = await db.fetch(
             """
-            SELECT id::text AS id, veiculo_id::text AS veiculo_id,
-                   tenant_id::text AS tenant_id,
+            SELECT tenant_id::text AS tenant_id, veiculo_id::text AS veiculo_id,
                    (extract(epoch from ts) * 1000) AS ts_ms,
                    velocidade AS vel_gps,
                    componentes_raw
@@ -697,7 +696,7 @@ async def _reprocessar_mes_atual() -> dict:
                 r['ignicao'], r['cruise_ctrl'], r['pedal_freio'], r['embreagem'],
                 r['faixa_rpm'], r['faixa_acelerador'], r['is_motor_ocioso'], r['is_embalo'],
                 r['fonte_rpm'], r['fonte_acelerador'], r['fonte_velocidade'], r['fonte_combustivel'],
-                row['id'],
+                row['tenant_id'], row['veiculo_id'], row['ts_ms'] / 1000.0,
             ))
 
         if updates:
@@ -709,7 +708,7 @@ async def _reprocessar_mes_atual() -> dict:
                     ignicao=$8, cruise_ctrl=$9, pedal_freio=$10, embreagem=$11,
                     faixa_rpm=$12, faixa_acelerador=$13, is_motor_ocioso=$14, is_embalo=$15,
                     fonte_rpm=$16, fonte_acelerador=$17, fonte_velocidade=$18, fonte_combustivel=$19
-                WHERE id=$20::uuid
+                WHERE tenant_id=$20::uuid AND veiculo_id=$21::uuid AND ts=to_timestamp($22)
                 """,
                 updates,
             )
