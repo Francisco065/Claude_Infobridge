@@ -127,12 +127,15 @@ def processar_posicao(
     )
     perc_acelerador = parsear_float(acelerador_raw)
 
-    # Odômetro: usar SOMENTE o CAN (9088) — o hodômetro real do veículo.
-    # extrair_componente já descarta '0', então quando o CAN vem 0/ausente o valor
-    # fica None e o cálculo usa a última leitura CAN válida conhecida. Não misturamos
-    # com o odômetro do GPS (id 10), que tem escala totalmente diferente e fazia o
-    # valor oscilar entre o hodômetro real (~972k) e a distância do GPS (~33k).
-    odometro_raw = extrair_componente(componentes, cfg.comp_odometro_can)  # 9088 CAN
+    # Odômetro: CAN (9088) → GPS (10), seguindo a preferência CAN → GPS.
+    # O CAN 9088 é o hodômetro real; quando o device não o envia (vem '0'/ausente),
+    # cai para o Odômetro GPS (id 10). Dentro de um mesmo veículo a fonte tende a
+    # ser consistente, então o delta do período (km) não oscila entre escalas.
+    odometro_raw = extrair_componente(
+        componentes,
+        cfg.comp_odometro_can,  # 9088 CAN
+        cfg.comp_odometro_gps,  # 10   GPS (fallback)
+    )
     odometro_km = (parsear_float(odometro_raw.replace(' KM', '').replace('KM', ''))
                    if odometro_raw else None)
 
