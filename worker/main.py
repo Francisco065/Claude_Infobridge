@@ -708,7 +708,7 @@ async def _reprocessar_mes_atual() -> dict:
     return {'linhas_no_mes': total, 'reprocessadas': len(updates), 'fontes': fontes}
 
 
-@api.post('/jobs/reprocessar-mes')
+@api.api_route('/jobs/reprocessar-mes', methods=['GET', 'POST'])
 async def reprocessar_mes(recalcular: bool = True):
     """
     Reprocessa as leituras do mês atual (fontes CAN→OBD2→GPS) a partir de
