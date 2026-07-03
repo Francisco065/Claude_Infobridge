@@ -669,7 +669,7 @@ async def _reprocessar_mes_atual() -> dict:
         rows = await db.fetch(
             """
             SELECT tenant_id::text AS tenant_id, veiculo_id::text AS veiculo_id,
-                   (extract(epoch from ts) * 1000) AS ts_ms,
+                   (extract(epoch from ts) * 1000)::double precision AS ts_ms,
                    velocidade AS vel_gps,
                    componentes_raw
             FROM   leitura_telemetria
