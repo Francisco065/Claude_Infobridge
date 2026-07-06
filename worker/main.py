@@ -522,6 +522,76 @@ async def export_bruto(placa: str = 'QOD5557', inicio_h: int = 5, fim_h: int = 1
                     headers={'Content-Disposition': f'attachment; filename="{nome}"'})
 
 
+@api.get('/debug/export-mes')
+async def export_mes(placa: str = 'QOD5557'):
+    """
+    Export bruto do MÊS ATUAL de uma placa: para cada posição, o array de
+    componentes CRU (como a Multiportal envia) + o que o sistema EXTRAIU
+    (velocidade, rpm, acelerador, odômetro, consumo, combustível, fontes).
+    Só inclui posições com componentes_raw. Default: QOD5557.
+    """
+    brt = timezone(timedelta(hours=-3))
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        rows = await db.fetch(
+            """
+            SELECT lt.ts, lt.velocidade, lt.rpm, lt.perc_acelerador, lt.odometro_km,
+                   lt.consumo_total_l, lt.consumo_inst_l, lt.nivel_combustivel_pct,
+                   lt.ignicao, lt.cruise_ctrl, lt.pedal_freio, lt.embreagem,
+                   lt.faixa_rpm, lt.faixa_acelerador, lt.is_motor_ocioso, lt.is_embalo,
+                   lt.fonte_rpm, lt.fonte_acelerador, lt.fonte_velocidade, lt.fonte_combustivel,
+                   lt.componentes_raw
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2
+            ORDER BY lt.ts
+            """,
+            placa, inicio,
+        )
+    finally:
+        await db.close()
+
+    def f(v): return float(v) if v is not None else None
+    saida = []
+    com_raw = 0
+    for r in rows:
+        raw = r['componentes_raw']
+        if raw is not None:
+            com_raw += 1
+            if isinstance(raw, str):
+                try: raw = json.loads(raw)
+                except Exception: pass
+        saida.append({
+            'ts_brt': r['ts'].astimezone(brt).strftime('%d/%m/%Y %H:%M:%S') if r['ts'] else None,
+            'extraido': {
+                'velocidade': r['velocidade'], 'rpm': r['rpm'],
+                'perc_acelerador': f(r['perc_acelerador']), 'odometro_km': f(r['odometro_km']),
+                'consumo_total_l': f(r['consumo_total_l']), 'consumo_inst_l': f(r['consumo_inst_l']),
+                'nivel_combustivel_pct': f(r['nivel_combustivel_pct']),
+                'ignicao': r['ignicao'], 'cruise_ctrl': r['cruise_ctrl'],
+                'pedal_freio': r['pedal_freio'], 'embreagem': r['embreagem'],
+                'faixa_rpm': r['faixa_rpm'], 'faixa_acelerador': r['faixa_acelerador'],
+                'is_motor_ocioso': r['is_motor_ocioso'], 'is_embalo': r['is_embalo'],
+                'fonte_rpm': r['fonte_rpm'], 'fonte_acelerador': r['fonte_acelerador'],
+                'fonte_velocidade': r['fonte_velocidade'], 'fonte_combustivel': r['fonte_combustivel'],
+            },
+            'componentes_bruto': raw,
+        })
+
+    payload = json.dumps({
+        'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+        'total_posicoes': len(rows), 'posicoes_com_bruto': com_raw,
+        'posicoes': saida,
+    }, ensure_ascii=False, indent=2)
+    nome = f'{placa}_{hoje.strftime("%Y%m")}_bruto_mes.json'
+    return Response(content=payload, media_type='application/json; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="{nome}"',
+                             'X-Total-Linhas': str(len(rows))})
+
+
 @api.get('/debug/componentes')
 def debug_componentes():
     """
