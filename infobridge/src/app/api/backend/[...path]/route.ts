@@ -2,110 +2,46 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
+// Repassa a requisição ao backend preservando: método, query string, corpo,
+// status HTTP real e um corpo JSON sempre parseável (nunca quebra em 204/HTML).
+async function repassar(req: NextRequest, path: string[], method: string) {
   if (!API_URL) {
     return NextResponse.json({ mensagem: "BACKEND_URL não configurada no servidor" }, { status: 500 });
   }
 
-  const { path } = await params;
-  const target = `${API_URL}/api/v1/${path.join("/")}`;
-
-  const body = await req.text();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  const auth = req.headers.get("authorization");
-  if (auth) headers["authorization"] = auth;
-
-  try {
-    const res = await fetch(target, { method: "POST", headers, body });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (e: any) {
-    return NextResponse.json({ mensagem: `Erro ao conectar com API: ${e?.message}` }, { status: 502 });
-  }
-}
-
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  if (!API_URL) {
-    return NextResponse.json({ mensagem: "BACKEND_URL não configurada no servidor" }, { status: 500 });
-  }
-
-  const { path } = await params;
-  const target = `${API_URL}/api/v1/${path.join("/")}`;
-
-  const body = await req.text();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const auth = req.headers.get("authorization");
-  if (auth) headers["authorization"] = auth;
-
-  try {
-    const res = await fetch(target, { method: "PATCH", headers, body });
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-    return NextResponse.json(data, { status: res.status });
-  } catch (e: any) {
-    return NextResponse.json({ mensagem: `Erro ao conectar com API: ${e?.message}` }, { status: 502 });
-  }
-}
-
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  if (!API_URL) {
-    return NextResponse.json({ mensagem: "BACKEND_URL não configurada no servidor" }, { status: 500 });
-  }
-
-  const { path } = await params;
-  const target = `${API_URL}/api/v1/${path.join("/")}`;
-
+  const target = `${API_URL}/api/v1/${path.join("/")}${req.nextUrl.search}`;
   const headers: Record<string, string> = {};
   const auth = req.headers.get("authorization");
   if (auth) headers["authorization"] = auth;
 
+  let body: string | undefined;
+  if (method !== "GET" && method !== "DELETE") {
+    body = await req.text();
+    headers["Content-Type"] = "application/json";
+  }
+
+  let res: Response;
   try {
-    const res = await fetch(target, { method: "DELETE", headers });
-    const text = await res.text();
-    // 204/205 (e respostas sem corpo) não podem ter body — devolve status puro.
-    if (res.status === 204 || res.status === 205 || !text) {
-      return new NextResponse(null, { status: res.status === 204 || res.status === 205 ? res.status : 200 });
-    }
-    const data = JSON.parse(text);
-    return NextResponse.json(data, { status: res.status });
+    res = await fetch(target, { method, headers, body });
   } catch (e: any) {
     return NextResponse.json({ mensagem: `Erro ao conectar com API: ${e?.message}` }, { status: 502 });
   }
-}
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  if (!API_URL) {
-    return NextResponse.json({ mensagem: "BACKEND_URL não configurada no servidor" }, { status: 500 });
-  }
+  // Sem corpo (204/205 ou vazio): devolve o STATUS REAL, sem forçar 200.
+  const text = await res.text();
+  if (!text) return new NextResponse(null, { status: res.status });
 
-  const { path } = await params;
-  const search = req.nextUrl.search;
-  const target = `${API_URL}/api/v1/${path.join("/")}${search}`;
-
-  const headers: Record<string, string> = {};
-  const auth = req.headers.get("authorization");
-  if (auth) headers["authorization"] = auth;
-
+  // Tenta JSON; se vier HTML/erro de gateway, embrulha preservando o status.
   try {
-    const res = await fetch(target, { headers });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (e: any) {
-    return NextResponse.json({ mensagem: `Erro ao conectar com API: ${e?.message}` }, { status: 502 });
+    return NextResponse.json(JSON.parse(text), { status: res.status });
+  } catch {
+    return NextResponse.json({ mensagem: text.slice(0, 500) }, { status: res.status });
   }
 }
+
+type Ctx = { params: Promise<{ path: string[] }> };
+export async function GET(req: NextRequest, { params }: Ctx)    { return repassar(req, (await params).path, "GET"); }
+export async function POST(req: NextRequest, { params }: Ctx)   { return repassar(req, (await params).path, "POST"); }
+export async function PATCH(req: NextRequest, { params }: Ctx)  { return repassar(req, (await params).path, "PATCH"); }
+export async function PUT(req: NextRequest, { params }: Ctx)    { return repassar(req, (await params).path, "PUT"); }
+export async function DELETE(req: NextRequest, { params }: Ctx) { return repassar(req, (await params).path, "DELETE"); }

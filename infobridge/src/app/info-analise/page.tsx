@@ -613,7 +613,7 @@ export default function InfoAnalisePage() {
                     <CardComportamento nome="Faixa verde" pct={num(d.percFaixaVerdeInicial)} pol="maior" semDados={semDados} />
                     <CardComportamento nome="Aproveitamento de embalo" pct={num(d.percEmbalo)} pol="maior" semDados={semDados} />
                     <CardComportamento nome="Motor ligado parado" pct={num(d.percMotorOcioso)} pol="menor" semDados={semDados} />
-                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percAcelCritico)} pol="menor" semDados={semDados} />
+                    <CardComportamento nome="Acelerando acima do verde" pct={num(d.percFreioMotorAcel)} pol="menor" semDados={semDados} />
                     <CardComportamento nome="Excesso de velocidade" pct={num(d.percExcessoVelocidade)} pol="menor" semDados={semDados} />
                     <CardComportamento nome="Faixa verde total" pct={num(d.percFaixaVerdeInicial) + num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
                     <CardComportamento nome="Faixa verde final" pct={num(d.percFaixaVerdeFinal)} pol="maior" semDados={semDados} />
@@ -626,7 +626,7 @@ export default function InfoAnalisePage() {
                 <div>
                   <TituloSecao icone="ti-route">Dados da Viagem</TituloSecao>
                   <div className="ib-cards-sm">
-                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={`${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
+                    <CardStat icone="ti-map-pin" rotulo="Km total" valor={(num(d.kmTotal) < 0 || num(d.kmTotal) > 50000) ? "— (inconsistente)" : `${num(d.kmTotal).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`} />
                     <CardStat icone="ti-brand-speedtest" rotulo="Velocidade média" valor={`${num(d.velocidadeMediaKmh).toFixed(1)} km/h`} />
                     <CardStat icone="ti-droplet" rotulo="Consumo total" valor={`${num(d.consumoTotalLitros).toFixed(1)} L`} />
                     <CardStat icone="ti-trending-up" rotulo="Média km/L" valor={`${num(d.mediaKmL).toFixed(2)} km/L`} />

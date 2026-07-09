@@ -48,6 +48,12 @@ export function permissoesDaSessao(): Permissoes {
   try {
     const b64 = s.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     const p = JSON.parse(decodeURIComponent(escape(window.atob(b64))));
+    // Token expirado: limpa a sessão e trata como não autenticado (não decide
+    // UI/rotas com claims vencidos — evita "Sem acesso" enganoso e loops).
+    if (p.exp && p.exp * 1000 <= Date.now()) {
+      limparSessao();
+      return { acessoTotal: false, telas: [] };
+    }
     return {
       id: p.sub,
       acessoTotal: !!p.acessoTotal,
@@ -91,7 +97,7 @@ export async function apiLogin(email: string, senha: string) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.mensagem ?? err?.message ?? "Credenciais inválidas");
+    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? "Credenciais inválidas");
   }
 
   return res.json() as Promise<{
@@ -108,7 +114,7 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
   if (!res.ok) {
     if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json() as Promise<T>;
 }
@@ -186,7 +192,7 @@ export async function apiPatch<T>(path: string, token: string, body: unknown): P
   if (!res.ok) {
     if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json().catch(() => ({})) as Promise<T>;
 }
@@ -210,7 +216,7 @@ export async function apiPost<T>(path: string, token: string, body: unknown): Pr
   if (!res.ok) {
     if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json() as Promise<T>;
 }
@@ -224,7 +230,7 @@ export async function apiDelete<T>(path: string, token: string): Promise<T> {
   if (!res.ok) {
     if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
   return res.json().catch(() => ({})) as Promise<T>;
 }

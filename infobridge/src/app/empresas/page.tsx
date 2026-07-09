@@ -174,7 +174,7 @@ function ModalEmpresa({
               <div>
                 <label style={labelBase}>CEP</label>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <input style={{ ...inputBase, fontFamily: MONO }} value={cep} onChange={(e) => setCep(e.target.value.replace(/\D/g, "").slice(0, 8))} onBlur={() => cep.replace(/\D/g, "").length === 8 && buscarCep()} inputMode="numeric" placeholder="00000000" />
+                  <input style={{ ...inputBase, fontFamily: MONO }} value={cep} onChange={(e) => setCep(e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder="00000000" />
                   <button type="button" onClick={buscarCep} disabled={buscandoCep} title="Buscar CEP" style={{ flexShrink: 0, background: "#F6F2F2", border: "1px solid #E7D7D7", color: VINHO, borderRadius: 9, padding: "0 11px", cursor: "pointer" }}>
                     <i className={`ti ${buscandoCep ? "ti-loader-2" : "ti-search"}`} aria-hidden="true" style={{ fontSize: 15 }} />
                   </button>
@@ -330,10 +330,15 @@ export default function EmpresasPage() {
     if (!token) return;
     setAviso(""); setErro("");
     try {
+      // Precisa do DETALHE (traz veiculos/responsaveis). Se falhar, NÃO abre o
+      // modal — abrir com o item da lista (sem esses campos) faria o Salvar
+      // desvincular todos os veículos e apagar os responsáveis.
       const det = await apiFetch<Empresa>(`/empresas/${e.id}`, token);
       setEditando(det);
-    } catch { setEditando(e); }
-    setModalAberto(true);
+      setModalAberto(true);
+    } catch (err: any) {
+      setErro(err?.message ?? "Não foi possível carregar a empresa para edição.");
+    }
   }
 
   async function onSalvar(dados: any) {
@@ -382,9 +387,10 @@ export default function EmpresasPage() {
   const empresasFiltradas = empresas.filter((e) => {
     if (!busca.trim()) return true;
     const b = busca.toLowerCase();
+    const digitos = b.replace(/\D/g, "");
     return (e.nome ?? "").toLowerCase().includes(b)
       || (e.nomeFantasia ?? "").toLowerCase().includes(b)
-      || (e.cnpj ?? "").includes(b.replace(/\D/g, ""));
+      || (digitos !== "" && (e.cnpj ?? "").includes(digitos));
   });
 
   return (
