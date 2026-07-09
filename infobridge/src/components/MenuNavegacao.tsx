@@ -7,7 +7,7 @@ const VINHO = "#6E1414";
 const AZUL = "#27508F";
 const SANS = "'IBM Plex Sans', system-ui, sans-serif";
 
-type Chave = "cadastros" | "empresas" | "usuarios" | "mapa-ao-vivo" | "info-analise";
+type Chave = "cadastros" | "empresas" | "usuarios" | "mapa-ao-vivo" | "info-analise" | "performance";
 
 const pill = (ativo: boolean): React.CSSProperties => ({
   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13,
@@ -76,6 +76,9 @@ export default function MenuNavegacao({ atual }: { atual: Chave }) {
 
       {/* 5. Info Análise */}
       {podeAcessar("info-analise") && <Item chave="info-analise" href="/info-analise" icone="ti-chart-dots" label="Info Análise" />}
+
+      {/* 6. Performance */}
+      {podeAcessar("info-analise") && <Item chave="performance" href="/performance" icone="ti-report-analytics" label="Performance" />}
     </nav>
   );
 }

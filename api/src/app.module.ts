@@ -18,6 +18,7 @@ import { MotoristasModule } from './modules/motoristas/motoristas.module';
 import { TelemetriaModule } from './modules/telemetria/telemetria.module';
 import { IndicadoresModule } from './modules/indicadores/indicadores.module';
 import { PontuacaoModule }  from './modules/pontuacao/pontuacao.module';
+import { PerformanceModule } from './modules/performance/performance.module';
 import { HealthModule }     from './modules/health/health.module';
 
 @Module({
@@ -62,6 +63,7 @@ import { HealthModule }     from './modules/health/health.module';
     TelemetriaModule,
     IndicadoresModule,
     PontuacaoModule,
+    PerformanceModule,
     HealthModule,
   ],
   providers: [
