@@ -241,7 +241,7 @@ async def _atualizar_km_rodado(db, inicio: datetime):
                      PARTITION BY tenant_id, veiculo_id ORDER BY ts
                  ) AS delta
           FROM   leitura_telemetria
-          WHERE  ts >= $1 - INTERVAL '2 days'
+          WHERE  ts >= $1::timestamptz - INTERVAL '2 days'
         )
         UPDATE leitura_telemetria lt
         SET    km_rodado = CASE WHEN d.delta > 0 AND d.delta <= 30 THEN d.delta ELSE 0 END
@@ -249,7 +249,7 @@ async def _atualizar_km_rodado(db, inicio: datetime):
         WHERE  lt.tenant_id = d.tenant_id
           AND  lt.veiculo_id = d.veiculo_id
           AND  lt.ts = d.ts
-          AND  lt.ts >= $1
+          AND  lt.ts >= $1::timestamptz
         """,
         inicio,
     )
