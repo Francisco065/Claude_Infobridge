@@ -872,6 +872,65 @@ async def debug_frenagens(placa: str = 'QOD5557'):
         await db.close()
 
 
+@api.get('/debug/rpm')
+async def debug_rpm(placa: str = 'QOD5557'):
+    """Distribuição de RPM do mês: cobertura, min/max/média, histograma por faixa
+    e fonte — mostra se o RPM chega e como está distribuído pelas faixas."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        s = await db.fetchrow(
+            """
+            SELECT COUNT(*)                              AS leituras,
+                   COUNT(lt.rpm)                         AS com_rpm,
+                   MIN(lt.rpm) FILTER (WHERE lt.rpm > 0) AS min_ativo,
+                   MAX(lt.rpm)                           AS maximo,
+                   ROUND(AVG(lt.rpm) FILTER (WHERE lt.rpm > 0)::numeric, 0) AS media_ativo,
+                   COUNT(*) FILTER (WHERE lt.rpm > 0 AND lt.rpm < 1300)          AS abaixo_verde,
+                   COUNT(*) FILTER (WHERE lt.rpm >= 1300 AND lt.rpm <= 1899)     AS verde_inicial,
+                   COUNT(*) FILTER (WHERE lt.rpm >= 1900 AND lt.rpm <= 2099)     AS verde_final,
+                   COUNT(*) FILTER (WHERE lt.rpm >= 2100 AND lt.rpm <= 2800)     AS freio_motor,
+                   COUNT(*) FILTER (WHERE lt.rpm > 2800)                         AS acima
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2
+            """,
+            placa, inicio,
+        )
+        fontes = await db.fetch(
+            """
+            SELECT COALESCE(fonte_rpm, '(nulo)') AS k, COUNT(*) AS n
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 GROUP BY 1 ORDER BY 2 DESC
+            """,
+            placa, inicio,
+        )
+        faixas = await db.fetch(
+            """
+            SELECT COALESCE(faixa_rpm::text, '(nulo)') AS k, COUNT(*) AS n
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 GROUP BY 1 ORDER BY 2 DESC
+            """,
+            placa, inicio,
+        )
+        f = lambda x: float(x) if x is not None else None
+        return {
+            'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+            'leituras': s['leituras'], 'com_rpm': s['com_rpm'],
+            'cobertura_pct': round(s['com_rpm'] / s['leituras'] * 100, 1) if s['leituras'] else 0,
+            'rpm_min_ativo': f(s['min_ativo']), 'rpm_max': f(s['maximo']), 'rpm_media_ativo': f(s['media_ativo']),
+            'histograma_rpm': {
+                'abaixo_1300': s['abaixo_verde'], 'verde_1300_1899': s['verde_inicial'],
+                'verde_1900_2099': s['verde_final'], 'freio_2100_2800': s['freio_motor'],
+                'acima_2800': s['acima'],
+            },
+            'fonte_rpm': {r['k']: r['n'] for r in fontes},
+            'faixa_rpm_gravada': {r['k']: r['n'] for r in faixas},
+        }
+    finally:
+        await db.close()
+
+
 @api.get('/debug/acelerador')
 async def debug_acelerador(placa: str = 'QOD5557'):
     """Distribuição de perc_acelerador do mês: cobertura, min/max/média, histograma
