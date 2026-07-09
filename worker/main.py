@@ -223,6 +223,38 @@ async def _polling_todos() -> dict:
     return resumo
 
 
+# ── KM rodado por linha (odômetro atual − anterior, saneado) ──
+
+async def _atualizar_km_rodado(db, inicio: datetime):
+    """
+    Grava km_rodado em cada leitura do período: diferença do odômetro em relação
+    à posição ANTERIOR do mesmo veículo (LAG por ts), saneada — 0 < d ≤ 30 km;
+    saltos negativos (reset) e gigantes (oscilação de escala do GPS) viram 0.
+    Assim o km fica auditável linha a linha e km_total = SUM(km_rodado).
+    A janela inclui 2 dias antes do início para a 1ª posição do mês ter referência.
+    """
+    await db.execute(
+        """
+        WITH d AS (
+          SELECT tenant_id, veiculo_id, ts,
+                 odometro_km - LAG(odometro_km) OVER (
+                     PARTITION BY tenant_id, veiculo_id ORDER BY ts
+                 ) AS delta
+          FROM   leitura_telemetria
+          WHERE  ts >= $1 - INTERVAL '2 days'
+        )
+        UPDATE leitura_telemetria lt
+        SET    km_rodado = CASE WHEN d.delta > 0 AND d.delta <= 30 THEN d.delta ELSE 0 END
+        FROM   d
+        WHERE  lt.tenant_id = d.tenant_id
+          AND  lt.veiculo_id = d.veiculo_id
+          AND  lt.ts = d.ts
+          AND  lt.ts >= $1
+        """,
+        inicio,
+    )
+
+
 # ── Recálculo de indicadores do mês atual ─────────────────────
 
 async def _recalcular_mes_atual():
@@ -238,6 +270,8 @@ async def _recalcular_mes_atual():
 
     db = await asyncpg.connect(cfg.database_url)
     try:
+        # Atualiza o km_rodado por linha ANTES de agregar os indicadores.
+        await _atualizar_km_rodado(db, datetime(inicio.year, inicio.month, inicio.day))
         pares = await db.fetch(
             """
             SELECT DISTINCT
@@ -311,7 +345,8 @@ async def _garantir_colunas():
             ALTER TABLE leitura_telemetria
                 ADD COLUMN IF NOT EXISTS nivel_combustivel_pct numeric(5,1),
                 ADD COLUMN IF NOT EXISTS fonte_velocidade  varchar(10),
-                ADD COLUMN IF NOT EXISTS fonte_combustivel varchar(10)
+                ADD COLUMN IF NOT EXISTS fonte_combustivel varchar(10),
+                ADD COLUMN IF NOT EXISTS km_rodado numeric(8,3)
             """
         )
     finally:
@@ -774,6 +809,58 @@ async def debug_mes_atual():
     finally:
         await db.close()
     return out
+
+
+@api.get('/debug/odometro')
+async def debug_odometro(placa: str = 'QOD5557'):
+    """Diagnóstico do odômetro/km do mês para uma placa: cobertura, min/max,
+    soma de km_rodado e uma amostra de posições consecutivas com o delta."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        resumo = await db.fetchrow(
+            """
+            SELECT COUNT(*)                       AS leituras,
+                   COUNT(lt.odometro_km)          AS com_odometro,
+                   MIN(lt.odometro_km)            AS odo_min,
+                   MAX(lt.odometro_km)            AS odo_max,
+                   COUNT(lt.km_rodado)            AS com_km_rodado,
+                   COALESCE(SUM(lt.km_rodado), 0) AS km_total_soma
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2
+            """,
+            placa, inicio,
+        )
+        amostra = await db.fetch(
+            """
+            SELECT lt.ts, lt.odometro_km, lt.km_rodado
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 AND lt.odometro_km IS NOT NULL
+            ORDER BY lt.ts
+            LIMIT 20
+            """,
+            placa, inicio,
+        )
+        f = lambda x: float(x) if x is not None else None
+        return {
+            'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+            'leituras': resumo['leituras'],
+            'com_odometro': resumo['com_odometro'],
+            'odometro_min': f(resumo['odo_min']),
+            'odometro_max': f(resumo['odo_max']),
+            'com_km_rodado': resumo['com_km_rodado'],
+            'km_total_soma': f(resumo['km_total_soma']),
+            'amostra': [
+                {'ts': r['ts'].isoformat() if r['ts'] else None,
+                 'odometro_km': f(r['odometro_km']), 'km_rodado': f(r['km_rodado'])}
+                for r in amostra
+            ],
+        }
+    finally:
+        await db.close()
 
 
 # ── Reprocessamento do mês atual a partir de componentes_raw ──

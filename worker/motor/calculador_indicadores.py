@@ -90,7 +90,7 @@ async def _calcular_periodo(
         rows = await conn.fetch(
             """
             SELECT
-                ts, velocidade, rpm, perc_acelerador, odometro_km,
+                ts, velocidade, rpm, perc_acelerador, odometro_km, km_rodado,
                 consumo_total_l, consumo_inst_l, ignicao,
                 faixa_rpm, faixa_acelerador, is_motor_ocioso, is_embalo,
                 evento_id, gps_valido
@@ -113,7 +113,7 @@ async def _calcular_periodo(
             return
 
         df = pd.DataFrame(rows, columns=[
-            'ts', 'velocidade', 'rpm', 'perc_acelerador', 'odometro_km',
+            'ts', 'velocidade', 'rpm', 'perc_acelerador', 'odometro_km', 'km_rodado',
             'consumo_total_l', 'consumo_inst_l', 'ignicao',
             'faixa_rpm', 'faixa_acelerador', 'is_motor_ocioso', 'is_embalo',
             'evento_id', 'gps_valido',
@@ -208,8 +208,17 @@ def _soma_deltas_plausiveis(serie: pd.Series, cap: float):
 
 
 def _km_e_consumo(df: pd.DataFrame):
-    km, ini, fim = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
-    km = round(km, 3) if km is not None else 0.0
+    # KM do período = SOMA do km_rodado persistido por linha (odômetro atual −
+    # anterior, já saneado). Fallback: recalcula pelos deltas do odômetro se a
+    # coluna ainda não foi populada.
+    if 'km_rodado' in df.columns and df['km_rodado'].notna().any():
+        km = round(float(pd.to_numeric(df['km_rodado'], errors='coerce').fillna(0).clip(lower=0).sum()), 3)
+    else:
+        km_calc, _, _ = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
+        km = round(km_calc, 3) if km_calc is not None else 0.0
+
+    # Odômetro inicial/final do período (primeira/última leitura válida).
+    _, ini, fim = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
 
     consumo, _, _ = _soma_deltas_plausiveis(df['consumo_total_l'], _CONSUMO_SALTO_MAX)
     consumo = round(consumo, 3) if consumo is not None else None

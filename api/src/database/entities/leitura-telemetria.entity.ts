@@ -163,6 +163,20 @@ export class LeituraTelemetria {
   })
   odometroKm: number;
 
+  /**
+   * KM rodado entre a posição anterior e esta (odômetro atual − anterior),
+   * já saneado (0 < d ≤ 30 km; saltos negativos/gigantes = 0). Persistido por
+   * linha para auditoria; km_total do período = SUM(km_rodado).
+   */
+  @Column({
+    name: 'km_rodado',
+    type: 'numeric',
+    precision: 8,
+    scale: 3,
+    nullable: true,
+  })
+  kmRodado: number;
+
   // ── Estados Binários ─────────────────────────────────────
   /** Comp 1. Crítico para detecção de motor ocioso. */
   @Column({ nullable: true })
