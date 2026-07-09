@@ -45,6 +45,7 @@ type Veiculo = {
   marca?: string;
   modelo?: string;
   frota?: string;
+  capacidadeTanqueL?: number | null;
   motoristaId?: string | null;
   motorista?: { id?: string; nome?: string } | null;
 };
@@ -205,6 +206,8 @@ export default function CadastrosPage() {
   const [selMotorista, setSelMotorista] = useState("");
   const [vinculoDesde, setVinculoDesde] = useState(""); // data retroativa (YYYY-MM-DD); vazio = agora
   const [ocupado, setOcupado] = useState(false);
+  const [tanque, setTanque] = useState<Record<string, string>>({}); // edição inline da capacidade
+  const [salvandoTanque, setSalvandoTanque] = useState<string | null>(null);
 
   const sair = useCallback(() => { limparSessao(); setToken(null); }, []);
 
@@ -355,6 +358,26 @@ export default function CadastrosPage() {
       await carregar(token);
     } catch (e: any) {
       setErro(e?.message ?? "Erro ao vincular empresa");
+    }
+  }
+
+  async function salvarTanque(veiId: string, placa: string) {
+    if (!token) return;
+    const bruto = (tanque[veiId] ?? "").trim();
+    const litros = bruto === "" ? null : Number(bruto.replace(",", "."));
+    if (litros !== null && (!Number.isFinite(litros) || litros <= 0)) {
+      setErro("Capacidade do tanque inválida."); return;
+    }
+    setSalvandoTanque(veiId); setErro(""); setAviso("");
+    try {
+      await apiPatch(`/veiculos/${veiId}`, token, { capacidadeTanqueL: litros });
+      setAviso(`Capacidade do tanque de ${placa} salva${litros ? `: ${litros} L` : " (removida)"}.`);
+      setTanque((t) => { const n = { ...t }; delete n[veiId]; return n; });
+      await carregar(token);
+    } catch (e: any) {
+      setErro(e?.message ?? "Erro ao salvar capacidade do tanque");
+    } finally {
+      setSalvandoTanque(null);
     }
   }
 
@@ -662,6 +685,30 @@ export default function CadastrosPage() {
                             {v.frota && <span style={{ fontSize: 11, color: "#8A8D96" }}>{v.frota}</span>}
                           </div>
                           <div style={{ fontSize: 11.5, color: "#6B6E76", marginTop: 2 }}>{modeloDe(v) || "—"}</div>
+                          {podeEditar ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 6 }} title="Capacidade do tanque — usada para estimar o consumo pelo nível de combustível">
+                              <i className="ti ti-gas-station" aria-hidden="true" style={{ fontSize: 14, color: AZUL }} />
+                              <input
+                                type="number" min={0} step={1} inputMode="numeric"
+                                value={tanque[v.id] ?? (v.capacidadeTanqueL != null ? String(v.capacidadeTanqueL) : "")}
+                                onChange={(e) => setTanque((t) => ({ ...t, [v.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === "Enter") salvarTanque(v.id, v.placa ?? "veículo"); }}
+                                placeholder="Tanque (L)"
+                                style={{ ...inp, width: 110, padding: "5px 8px", fontSize: 12 }}
+                              />
+                              <span style={{ fontSize: 11, color: "#8A8D96" }}>L</span>
+                              {(tanque[v.id] !== undefined && tanque[v.id] !== (v.capacidadeTanqueL != null ? String(v.capacidadeTanqueL) : "")) && (
+                                <button onClick={() => salvarTanque(v.id, v.placa ?? "veículo")} disabled={salvandoTanque === v.id}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, background: VINHO, border: "none", borderRadius: 7, padding: "5px 9px", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: SANS }}>
+                                  <i className="ti ti-device-floppy" aria-hidden="true" style={{ fontSize: 13 }} />{salvandoTanque === v.id ? "…" : "Salvar"}
+                                </button>
+                              )}
+                            </div>
+                          ) : v.capacidadeTanqueL != null ? (
+                            <div style={{ fontSize: 11.5, color: "#6B6E76", marginTop: 4 }}>
+                              <i className="ti ti-gas-station" aria-hidden="true" style={{ fontSize: 13, marginRight: 4, color: AZUL }} />Tanque: {v.capacidadeTanqueL} L
+                            </div>
+                          ) : null}
                         </div>
 
                         {moto ? (

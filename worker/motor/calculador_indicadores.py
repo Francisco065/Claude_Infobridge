@@ -91,7 +91,7 @@ async def _calcular_periodo(
             """
             SELECT
                 ts, velocidade, rpm, perc_acelerador, odometro_km, km_rodado,
-                consumo_total_l, consumo_inst_l, ignicao,
+                consumo_total_l, consumo_inst_l, nivel_combustivel_pct, ignicao,
                 faixa_rpm, faixa_acelerador, is_motor_ocioso, is_embalo,
                 evento_id, gps_valido
             FROM  leitura_telemetria
@@ -114,10 +114,17 @@ async def _calcular_periodo(
 
         df = pd.DataFrame(rows, columns=[
             'ts', 'velocidade', 'rpm', 'perc_acelerador', 'odometro_km', 'km_rodado',
-            'consumo_total_l', 'consumo_inst_l', 'ignicao',
+            'consumo_total_l', 'consumo_inst_l', 'nivel_combustivel_pct', 'ignicao',
             'faixa_rpm', 'faixa_acelerador', 'is_motor_ocioso', 'is_embalo',
             'evento_id', 'gps_valido',
         ])
+
+        # Capacidade do tanque (para estimar consumo pelo nível quando o PID direto
+        # de consumo não é enviado pelo equipamento).
+        cap_row = await conn.fetchrow(
+            "SELECT capacidade_tanque_l FROM veiculos WHERE id = $1::uuid", veiculo_id)
+        capacidade_tanque = (float(cap_row['capacidade_tanque_l'])
+                             if cap_row and cap_row['capacidade_tanque_l'] else None)
         df['ts'] = pd.to_datetime(df['ts'], utc=True)
         df = df.sort_values('ts').reset_index(drop=True)
 
@@ -136,7 +143,7 @@ async def _calcular_periodo(
         tempo_parado_s    = max(0.0, float(tempo_total_s) - tempo_movimento_s)
 
         # ── KM e Consumo ─────────────────────────────────────
-        km_total, odometro_ini, odometro_fim, consumo_total = _km_e_consumo(df)
+        km_total, odometro_ini, odometro_fim, consumo_total = _km_e_consumo(df, capacidade_tanque)
 
         # ── Velocidade ────────────────────────────────────────
         vel_media, vel_max = _velocidade(df)
@@ -207,7 +214,20 @@ def _soma_deltas_plausiveis(serie: pd.Series, cap: float):
     return float(d.sum()), float(s.iloc[0]), float(s.iloc[-1])
 
 
-def _km_e_consumo(df: pd.DataFrame):
+def _consumo_por_nivel(serie_pct: pd.Series, capacidade_l: float):
+    """Estima litros consumidos pela QUEDA do nível do tanque (%) × capacidade.
+    Só conta descidas (consumo); subidas (reabastecimento) são ignoradas."""
+    s = pd.to_numeric(serie_pct, errors='coerce').dropna()
+    if len(s) < 2:
+        return None
+    d = s.diff()
+    quedas = -d[d < 0]              # % que desceu, como positivo
+    quedas = quedas[quedas <= 100]  # descarta ruído (queda > 100% é impossível)
+    litros = float(quedas.sum()) * capacidade_l / 100.0
+    return round(litros, 3) if litros > 0 else None
+
+
+def _km_e_consumo(df: pd.DataFrame, capacidade_tanque: float | None = None):
     # KM do período = SOMA do km_rodado persistido por linha (odômetro atual −
     # anterior, já saneado). Fallback: recalcula pelos deltas do odômetro se a
     # coluna ainda não foi populada.
@@ -227,8 +247,18 @@ def _km_e_consumo(df: pd.DataFrame):
     else:
         ini = fim = None
 
-    consumo, _, _ = _soma_deltas_plausiveis(df['consumo_total_l'], _CONSUMO_SALTO_MAX)
-    consumo = round(consumo, 3) if consumo is not None else None
+    # Consumo: preferir o dado DIRETO (contador do motor). Se o equipamento não
+    # envia (vem 0/ausente) mas há nível de tanque + capacidade cadastrada,
+    # ESTIMA pela queda de nível × capacidade.
+    consumo_direto, _, _ = _soma_deltas_plausiveis(df['consumo_total_l'], _CONSUMO_SALTO_MAX)
+    consumo_direto = round(consumo_direto, 3) if consumo_direto is not None else None
+
+    if consumo_direto and consumo_direto > 0:
+        consumo = consumo_direto
+    elif capacidade_tanque and 'nivel_combustivel_pct' in df.columns:
+        consumo = _consumo_por_nivel(df['nivel_combustivel_pct'], capacidade_tanque)
+    else:
+        consumo = consumo_direto
 
     return km, ini, fim, consumo
 
