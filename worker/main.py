@@ -811,6 +811,67 @@ async def debug_mes_atual():
     return out
 
 
+@api.get('/debug/frenagens')
+async def debug_frenagens(placa: str = 'QOD5557'):
+    """Diagnóstico de freadas do mês: indicadores atuais, códigos de evento que o
+    device envia (para achar o de freada), e a maior variação de velocidade entre
+    posições (mostra se o método Δv/Δt tem resolução)."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        indicadores = await db.fetch(
+            """
+            SELECT m.nome AS motorista, ip.frenagens_totais, ip.frenagens_bruscas,
+                   ip.frenagens_alta_velocidade, ip.frenagens_por_100km, ip.km_total
+            FROM   indicador_periodo ip
+            JOIN   veiculos v   ON v.id = ip.veiculo_id
+            LEFT JOIN motoristas m ON m.id = ip.motorista_id
+            WHERE  v.placa = $1 AND ip.periodo_inicio >= $2
+            """,
+            placa, inicio.date(),
+        )
+        eventos = await db.fetch(
+            """
+            SELECT lt.evento_id, COUNT(*) AS n
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 AND lt.evento_id IS NOT NULL
+            GROUP BY lt.evento_id ORDER BY n DESC LIMIT 25
+            """,
+            placa, inicio,
+        )
+        dv = await db.fetchrow(
+            """
+            WITH s AS (
+              SELECT velocidade,
+                     LAG(velocidade) OVER (ORDER BY ts) AS vel_ant,
+                     EXTRACT(EPOCH FROM (ts - LAG(ts) OVER (ORDER BY ts))) AS dt
+              FROM leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+              WHERE v.placa = $1 AND lt.ts >= $2 AND lt.velocidade IS NOT NULL
+            )
+            SELECT MAX(vel_ant - velocidade) AS maior_queda_kmh,
+                   ROUND(AVG(dt)::numeric, 1) AS intervalo_medio_s,
+                   COUNT(*) FILTER (WHERE vel_ant - velocidade > 0 AND dt > 0
+                                    AND (vel_ant - velocidade)/3.6/dt >= 2.0) AS pares_desac_2ms2
+            FROM s
+            """,
+            placa, inicio,
+        )
+        return {
+            'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+            'indicadores': [dict(r) for r in indicadores],
+            'evento_13654_freada_brusca': next((r['n'] for r in eventos if r['evento_id'] == 13654), 0),
+            'eventos_no_mes': [{'evento_id': r['evento_id'], 'n': r['n']} for r in eventos],
+            'velocidade': {
+                'maior_queda_entre_posicoes_kmh': float(dv['maior_queda_kmh']) if dv and dv['maior_queda_kmh'] is not None else None,
+                'intervalo_medio_s': float(dv['intervalo_medio_s']) if dv and dv['intervalo_medio_s'] is not None else None,
+                'pares_com_desaceleracao_2ms2': dv['pares_desac_2ms2'] if dv else 0,
+            },
+        }
+    finally:
+        await db.close()
+
+
 @api.get('/debug/odometro')
 async def debug_odometro(placa: str = 'QOD5557'):
     """Diagnóstico do odômetro/km do mês para uma placa: cobertura, min/max,
