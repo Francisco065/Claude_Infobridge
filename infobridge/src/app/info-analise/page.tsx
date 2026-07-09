@@ -597,9 +597,18 @@ export default function InfoAnalisePage() {
                     </button>
                   </div>
                   <div style={{ marginTop: 6 }}>
-                    <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
-                    <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
-                    <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
+                    {(d.percAcelIdeal == null && d.percAcelAtencao == null && d.percAcelCritico == null) ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#8A8D96", background: "#F6F7F9", border: "1px solid #ECEDF1", borderRadius: 10, padding: "12px 14px", lineHeight: 1.5 }}>
+                        <i className="ti ti-plug-off" aria-hidden style={{ fontSize: 16, flexShrink: 0 }} />
+                        Sem dado de acelerador — o rastreador deste veículo não envia a posição do pedal.
+                      </div>
+                    ) : (
+                      <>
+                        <LinhaAcel nome="Ideal" valor={num(d.percAcelIdeal)} cor={VERDE} />
+                        <LinhaAcel nome="Atenção" valor={num(d.percAcelAtencao)} cor={AMARELO} />
+                        <LinhaAcel nome="Crítico" valor={num(d.percAcelCritico)} cor={VERMELHO} />
+                      </>
+                    )}
                   </div>
                 </div>
               </aside>

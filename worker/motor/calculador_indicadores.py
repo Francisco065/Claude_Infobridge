@@ -299,6 +299,14 @@ def _faixas_rpm(df: pd.DataFrame, tempo_total_s: float) -> dict:
 
 
 def _faixas_acelerador(df: pd.DataFrame, tempo_total_s: float) -> dict:
+    # PID de acelerador MORTO: alguns rastreadores enviam o pedal sempre '0'
+    # (ex.: 9445 OBD2). Sem NENHUM valor > 0 no período, o dado é inexistente —
+    # NÃO classificamos como "ideal" (seria uma falsa condução perfeita); retorna
+    # None para a UI mostrar "sem dados" e para a nota não ser inflada.
+    acel = pd.to_numeric(df['perc_acelerador'], errors='coerce').dropna()
+    if acel.empty or float(acel.max()) <= 0:
+        return {'perc_acel_ideal': None, 'perc_acel_atencao': None, 'perc_acel_critico': None}
+
     contagens = {'ideal': 0.0, 'atencao': 0.0, 'critico': 0.0}
     for faixa, grupo in df[df['faixa_acelerador'].notna()].groupby('faixa_acelerador'):
         contagens[faixa] = float(grupo['delta_t'].sum())
