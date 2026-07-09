@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { InjectDataSource }   from '@nestjs/typeorm';
 import { DataSource }         from 'typeorm';
-import { JwtAuthGuard }       from '../../common/guards/guards';
+import { JwtAuthGuard, SuperAdminGuard } from '../../common/guards/guards';
 import { Public }             from '../../common/decorators/decorators';
 import { PaginacaoDto }       from '../../common/dto/paginacao.dto';
 import { Usuario }            from '../../database/entities/usuario.entity';
@@ -14,7 +14,7 @@ import { CriarTenantDto, AtualizarTenantDto, ConfigurarCredencialDto } from './t
 
 @ApiTags('Tenants (SuperAdmin)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SuperAdminGuard)
 @Controller('admin/tenants')
 export class TenantsController {
   constructor(

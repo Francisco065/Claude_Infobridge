@@ -78,7 +78,9 @@ export class VeiculosService {
   }
 
   async listar(tenantId: string, filtro: FiltroVeiculoDto, empresaId?: string) {
-    const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
+    const pagina = Math.max(1, Math.floor(Number(filtro.pagina)) || 1);
+    const limite = Math.min(100, Math.max(1, Math.floor(Number(filtro.limite)) || 20));
+    const paginacao = { pagina, limite, skip: (pagina - 1) * limite };
     const qb = this.repo(tenantId)
       .createQueryBuilder('v')
       .leftJoinAndSelect('v.vinculos', 'vmv', 'vmv.fim IS NULL')

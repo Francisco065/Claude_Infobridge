@@ -58,7 +58,19 @@ export class UsuariosService {
     return semSenha;
   }
 
-  async criar(tenantId: string, dto: CriarUsuarioDto) {
+  /** Impede que um não-ADMIN crie/promova ADMIN ou conceda acesso total. */
+  private _barrarEscalonamento(dto: { perfil?: UsuarioPerfil; acessoTotal?: boolean }, solicitantePerfil?: string) {
+    if (solicitantePerfil === UsuarioPerfil.ADMIN) return;
+    if (dto.perfil === UsuarioPerfil.ADMIN) {
+      throw new ForbiddenException('Apenas um administrador pode atribuir o perfil de administrador.');
+    }
+    if (dto.acessoTotal === true) {
+      throw new ForbiddenException('Apenas um administrador pode conceder acesso total.');
+    }
+  }
+
+  async criar(tenantId: string, dto: CriarUsuarioDto, solicitantePerfil?: string) {
+    this._barrarEscalonamento(dto, solicitantePerfil);
     const emailExiste = await this.db.getRepository(Usuario).findOne({ where: { email: dto.email.toLowerCase() } });
     if (emailExiste) throw new EmailJaCadastradoException(dto.email);
 
@@ -76,11 +88,16 @@ export class UsuariosService {
     return semSenha;
   }
 
-  async atualizar(tenantId: string, id: string, dto: AtualizarUsuarioDto, solicitanteId: string) {
+  async atualizar(tenantId: string, id: string, dto: AtualizarUsuarioDto, solicitanteId: string, solicitantePerfil?: string) {
+    this._barrarEscalonamento(dto, solicitantePerfil);
     const usuario = await this.repo(tenantId).findById(id);
     if (!usuario) throw new UsuarioNaoEncontradoException(id);
     if (id === solicitanteId && dto.ativo === false) {
       throw new ForbiddenException('Você não pode desativar sua própria conta');
+    }
+    // Ninguém pode alterar o PRÓPRIO perfil ou acesso total (evita auto-promoção).
+    if (id === solicitanteId && (dto.perfil !== undefined || dto.acessoTotal !== undefined)) {
+      throw new ForbiddenException('Você não pode alterar o próprio perfil ou nível de acesso.');
     }
 
     // E-mail novo não pode colidir com outro usuário
@@ -107,7 +124,8 @@ export class UsuariosService {
     const usuario = await this.repo(tenantId).findById(id);
     if (!usuario) throw new UsuarioNaoEncontradoException(id);
     const senhaHash = await bcrypt.hash(dto.novaSenha, 12);
-    await this.repo(tenantId).update(id, { senhaHash } as any);
+    // Força a troca no próximo login — a senha definida pelo admin é provisória.
+    await this.repo(tenantId).update(id, { senhaHash, precisaTrocarSenha: true } as any);
   }
 
   async desativar(tenantId: string, id: string, solicitanteId: string) {

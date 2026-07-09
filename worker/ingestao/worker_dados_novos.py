@@ -40,7 +40,8 @@ def extrair_componente(componentes: list[dict], *ids: int,
     legítimo do dado — ex.: pedal do acelerador solto (0%).
     """
     proibidos = ('', 'null') if permitir_zero else ('', 'null', '0')
-    index = {c['id']: c.get('valor') for c in componentes}
+    # c.get('id') — componentes malformados (sem 'id') não podem derrubar o ciclo.
+    index = {c.get('id'): c.get('valor') for c in componentes if isinstance(c, dict)}
     for cid in ids:
         val = index.get(cid)
         if val is not None and val not in proibidos:
@@ -94,6 +95,7 @@ def processar_posicao(
         componentes,
         cfg.comp_velocidade_can,   # 9089 CAN
         cfg.comp_velocidade_obd2,  # 9183 OBD2
+        permitir_zero=True,        # 0 km/h (parado) é valor legítimo, não "ausente"
     )
     velocidade = parsear_int(velocidade_raw)
     if velocidade is None:
@@ -113,8 +115,11 @@ def processar_posicao(
     )
     rpm = parsear_int(rpm_raw)
 
-    acelerador_raw = extrair_componente(
-        componentes,
+    # Acelerador: alguns ids OBD2 (ex.: 9445) vêm SEMPRE '0' (PID morto) e, com
+    # permitir_zero, mascarariam variantes que trazem o valor real do pedal.
+    # 1ª passada: procura o 1º valor REAL (>0) em toda a cadeia (0 = ausente).
+    # 2ª passada: se nada, aceita 0 legítimo (pedal solto) via permitir_zero.
+    _acel_ids = (
         cfg.comp_acelerador_can,       # 9208 CAN
         cfg.comp_acelerador_obd2,      # 9445 OBD2
         cfg.comp_acelerador_obd2_alt,  # 9171 OBD2 (relativa)
@@ -123,8 +128,10 @@ def processar_posicao(
         cfg.comp_acelerador_obd2_d,    # 9176
         cfg.comp_acelerador_obd2_c,    # 9177
         cfg.comp_acelerador_obd2_b,    # 9178
-        permitir_zero=True,            # pedal solto (0%) é valor legítimo, não "ausente"
     )
+    acelerador_raw = extrair_componente(componentes, *_acel_ids)
+    if acelerador_raw is None:
+        acelerador_raw = extrair_componente(componentes, *_acel_ids, permitir_zero=True)
     perc_acelerador = parsear_float(acelerador_raw)
 
     # Odômetro: CAN (9088) → GPS (10), seguindo a preferência CAN → GPS.

@@ -29,7 +29,9 @@ export class MotoristasService {
   }
 
   async listar(tenantId: string, filtro: FiltroMotoristaDto, empresaId?: string) {
-    const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
+    const pagina = Math.max(1, Math.floor(Number(filtro.pagina)) || 1);
+    const limite = Math.min(100, Math.max(1, Math.floor(Number(filtro.limite)) || 20));
+    const paginacao = { pagina, limite, skip: (pagina - 1) * limite };
     const qb = this.repo(tenantId)
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.vinculos', 'vmv', 'vmv.fim IS NULL')
@@ -87,7 +89,17 @@ export class MotoristasService {
   async atualizar(tenantId: string, id: string, dto: AtualizarMotoristaDto) {
     const motorista = await this.repo(tenantId).findById(id);
     if (!motorista) throw new MotoristaNaoEncontradoException(id);
-    await this.repo(tenantId).update(id, dto as any);
+    // Whitelist explícita: empresaId NÃO entra aqui (troca de empresa é
+    // exclusiva da rota PATCH :id/empresa, restrita a ADMIN). Evita que o
+    // PATCH genérico (liberado a GESTOR) sobrescreva empresa/campos arbitrários.
+    const patch: Record<string, any> = {};
+    if (dto.nome !== undefined)         patch.nome = dto.nome;
+    if (dto.cpf !== undefined)          patch.cpf = dto.cpf;
+    if (dto.telefone !== undefined)     patch.telefone = dto.telefone;
+    if (dto.cnh !== undefined)          patch.cnh = dto.cnh;
+    if (dto.categoriaCnh !== undefined) patch.categoriaCnh = dto.categoriaCnh;
+    if (dto.ativo !== undefined)        patch.ativo = dto.ativo;
+    if (Object.keys(patch).length) await this.repo(tenantId).update(id, patch as any);
     return this.buscarPorId(tenantId, id);
   }
 

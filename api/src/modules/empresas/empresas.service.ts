@@ -107,21 +107,23 @@ export class EmpresasService {
    * e desvincula (empresa_id = NULL) os que antes eram da empresa e saíram da lista.
    */
   private async sincronizarVeiculos(tenantId: string, empresaId: string, veiculoIds: string[]) {
-    const repo = this.db.getRepository(Veiculo);
-    // Remove vínculo dos veículos que eram desta empresa e não estão mais na lista
-    await repo.createQueryBuilder()
-      .update(Veiculo)
-      .set({ empresaId: null as any })
-      .where('tenant_id = :tenantId AND empresa_id = :empresaId', { tenantId, empresaId })
-      .andWhere(veiculoIds.length ? 'id NOT IN (:...ids)' : '1=1', veiculoIds.length ? { ids: veiculoIds } : {})
-      .execute();
-
-    if (veiculoIds.length) {
-      await repo.createQueryBuilder()
+    // Atômico: se o 2º UPDATE falhar, o 1º (desvínculo) é revertido — senão os
+    // veículos ficariam "órfãos" (sem empresa) por uma falha parcial.
+    await this.db.transaction(async (manager) => {
+      await manager.createQueryBuilder()
         .update(Veiculo)
-        .set({ empresaId })
-        .where('tenant_id = :tenantId AND id IN (:...ids)', { tenantId, ids: veiculoIds })
+        .set({ empresaId: null as any })
+        .where('tenant_id = :tenantId AND empresa_id = :empresaId', { tenantId, empresaId })
+        .andWhere(veiculoIds.length ? 'id NOT IN (:...ids)' : '1=1', veiculoIds.length ? { ids: veiculoIds } : {})
         .execute();
-    }
+
+      if (veiculoIds.length) {
+        await manager.createQueryBuilder()
+          .update(Veiculo)
+          .set({ empresaId })
+          .where('tenant_id = :tenantId AND id IN (:...ids)', { tenantId, ids: veiculoIds })
+          .execute();
+      }
+    });
   }
 }

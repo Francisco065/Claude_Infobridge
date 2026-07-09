@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards/guards';
-import { TenantId, UserId, Roles } from '../../common/decorators/decorators';
+import { TenantId, UserId, Roles, CurrentUser } from '../../common/decorators/decorators';
 import { UsuarioPerfil }           from '../../database/entities/enums';
 import { PaginacaoDto }            from '../../common/dto/paginacao.dto';
 import { UsuariosService }         from './usuarios.service';
@@ -34,8 +34,8 @@ export class UsuariosController {
   @Post()
   @Roles(UsuarioPerfil.ADMIN, UsuarioPerfil.GESTOR)
   @ApiOperation({ summary: '[Admin/Gestor] Cria um novo usuário no tenant' })
-  criar(@TenantId() tenantId: string, @Body() dto: CriarUsuarioDto) {
-    return this.usuariosService.criar(tenantId, dto);
+  criar(@TenantId() tenantId: string, @Body() dto: CriarUsuarioDto, @CurrentUser() user: any) {
+    return this.usuariosService.criar(tenantId, dto, user?.perfil);
   }
 
   @Patch(':id')
@@ -46,8 +46,9 @@ export class UsuariosController {
     @Param('id') id: string,
     @Body() dto: AtualizarUsuarioDto,
     @UserId() solicitanteId: string,
+    @CurrentUser() user: any,
   ) {
-    return this.usuariosService.atualizar(tenantId, id, dto, solicitanteId);
+    return this.usuariosService.atualizar(tenantId, id, dto, solicitanteId, user?.perfil);
   }
 
   @Patch(':id/redefinir-senha')

@@ -36,13 +36,14 @@ export class IndicadoresController {
     @TenantId() tenantId: string,
     @Param('motoristaId') motoristaId: string,
     @Query() filtro: FiltroIndicadorDto,
+    @EmpresaScope() empresaId?: string,
   ) {
-    return this.indicadoresService.historicoPorMotorista(tenantId, motoristaId, filtro);
+    return this.indicadoresService.historicoPorMotorista(tenantId, motoristaId, filtro, empresaId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe de um indicador de período' })
-  buscar(@TenantId() tenantId: string, @Param('id') id: string) {
-    return this.indicadoresService.buscarPorId(tenantId, id);
+  buscar(@TenantId() tenantId: string, @Param('id') id: string, @EmpresaScope() empresaId?: string) {
+    return this.indicadoresService.buscarPorId(tenantId, id, empresaId);
   }
 }

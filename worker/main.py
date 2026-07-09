@@ -143,8 +143,12 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                         s['max'] = num_val if s['max'] is None else max(s['max'], num_val)
                     except (ValueError, TypeError):
                         pass
-                r = processar_posicao(row['veiculo_id'], row['motorista_id'],
-                                      tenant['tenant_id'], pos)
+                try:
+                    r = processar_posicao(row['veiculo_id'], row['motorista_id'],
+                                          tenant['tenant_id'], pos)
+                except Exception as e:
+                    log.warning('polling.posicao_erro', tenant_id=tenant['tenant_id'], error=str(e))
+                    r = None
                 if r:
                     # Guarda o array de componentes CRU (como a Multiportal envia),
                     # para comparação 1:1 com o que extraímos. Diagnóstico.
@@ -207,7 +211,11 @@ async def _polling_todos() -> dict:
         )
         resumo['tenants'] = len(tenants)
         for t in tenants:
-            res = await _polling_tenant(dict(t), db)
+            try:
+                res = await _polling_tenant(dict(t), db)
+            except Exception as e:
+                log.error('polling.tenant_erro', tenant_id=t['tenant_id'], error=str(e))
+                res = {'veiculos': 0, 'posicoes': 0, 'erro': str(e)}
             log.info('polling.ciclo', tenant_id=t['tenant_id'], **res)
             resumo['detalhes'].append({'tenant_id': t['tenant_id'], **res})
     finally:

@@ -38,21 +38,23 @@ export class IndicadoresService {
 
   // ── Detalhe de um indicador ───────────────────────────────
 
-  async buscarPorId(tenantId: string, id: string) {
-    const indicador = await this.repo
+  async buscarPorId(tenantId: string, id: string, empresaId?: string) {
+    const qb = this.repo
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.motorista', 'm')
       .leftJoinAndSelect('i.veiculo', 'v')
-      .where('i.id = :id AND i.tenant_id = :tenantId', { id, tenantId })
-      .getOne();
+      .where('i.id = :id AND i.tenant_id = :tenantId', { id, tenantId });
 
+    if (empresaId) qb.andWhere('m.empresa_id = :empresaId', { empresaId });
+
+    const indicador = await qb.getOne();
     if (!indicador) throw new NotFoundException(`Indicador ${id} não encontrado`);
     return indicador;
   }
 
   // ── Histórico de um motorista ─────────────────────────────
 
-  async historicoPorMotorista(tenantId: string, motoristaId: string, filtro: FiltroIndicadorDto) {
+  async historicoPorMotorista(tenantId: string, motoristaId: string, filtro: FiltroIndicadorDto, empresaId?: string) {
     const paginacao = { pagina: filtro.pagina ?? 1, limite: filtro.limite ?? 20, skip: filtro.skip };
 
     const qb = this.repo
@@ -60,6 +62,10 @@ export class IndicadoresService {
       .leftJoinAndSelect('i.veiculo', 'v')
       .where('i.tenant_id = :tenantId AND i.motorista_id = :motoristaId', { tenantId, motoristaId })
       .orderBy('i.periodoInicio', 'DESC');
+
+    if (empresaId) {
+      qb.innerJoin('i.motorista', 'm').andWhere('m.empresa_id = :empresaId', { empresaId });
+    }
 
     if (filtro.tipoPeriodo) qb.andWhere('i.tipo_periodo = :tp', { tp: filtro.tipoPeriodo });
     if (filtro.dataInicio)  qb.andWhere('i.periodo_inicio >= :di', { di: filtro.dataInicio });

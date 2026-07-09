@@ -81,17 +81,23 @@ async def _calcular_pontuacao_tenant(
         km_max   = max(float(r['km_total'] or 0) for r in indicadores)
         total    = len(indicadores)
 
-        # Calcular e inserir pontuação para cada motorista
-        for posicao, row in enumerate(indicadores, start=1):
-            nota   = float(row['nota_desempenho'] or 0)
-            km     = float(row['km_total'] or 0)
-
-            pontos_perf = round((nota / nota_max * cfg.peso_pontos_performance)
-                                if nota_max > 0 else 0.0, 2)
-            pontos_km   = round((km / km_max * cfg.peso_pontos_km)
-                                if km_max > 0 else 0.0, 2)
+        # Pré-calcula a pontuação de todos e ORDENA por pontuacao_final (não por
+        # nota), pois o ranking deve refletir a pontuação real (perf + km).
+        linhas = []
+        for row in indicadores:
+            nota = float(row['nota_desempenho'] or 0)
+            km   = float(row['km_total'] or 0)
+            pontos_perf = round((nota / nota_max * cfg.peso_pontos_performance) if nota_max > 0 else 0.0, 2)
+            pontos_km   = round((km / km_max * cfg.peso_pontos_km) if km_max > 0 else 0.0, 2)
             total_pts   = round(pontos_perf + pontos_km, 2)
+            linhas.append({'motorista_id': row['motorista_id'], 'nota': nota, 'km': km,
+                           'pontos_perf': pontos_perf, 'pontos_km': pontos_km, 'total_pts': total_pts})
+        linhas.sort(key=lambda x: (x['total_pts'], x['nota']), reverse=True)
 
+        # Inserir pontuação com a posição já correta
+        for posicao, l in enumerate(linhas, start=1):
+            nota, km = l['nota'], l['km']
+            pontos_perf, pontos_km, total_pts = l['pontos_perf'], l['pontos_km'], l['total_pts']
             await conn.execute(
                 """
                 INSERT INTO pontuacao_periodo (
@@ -116,7 +122,7 @@ async def _calcular_pontuacao_tenant(
                     total_motoristas_grupo = EXCLUDED.total_motoristas_grupo,
                     calculado_em          = NOW()
                 """,
-                tenant_id, row['motorista_id'],
+                tenant_id, l['motorista_id'],
                 inicio, fim,
                 nota, km, nota_max, km_max,
                 pontos_perf, pontos_km, total_pts,

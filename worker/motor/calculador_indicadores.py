@@ -98,7 +98,8 @@ async def _calcular_periodo(
             WHERE tenant_id   = $1::uuid
               AND veiculo_id  = $2::uuid
               AND motorista_id = $3::uuid
-              AND ts BETWEEN $4 AND $5
+              AND ts >= $4::date
+              AND ts <  ($5::date + INTERVAL '1 day')
               AND gps_valido  = TRUE
             ORDER BY ts ASC
             """,
@@ -147,7 +148,7 @@ async def _calcular_periodo(
         faixas_acel = _faixas_acelerador(df, tempo_total_s)
 
         # ── Frenagens ─────────────────────────────────────────
-        frenagens = _detectar_frenagens(df)
+        frenagens = _detectar_frenagens(df, km_total)
 
         # ── Motor Ocioso ──────────────────────────────────────
         motor_ocioso = _motor_ocioso(df, tempo_total_s)
@@ -187,20 +188,33 @@ async def _calcular_periodo(
 
 # ── Funções de cálculo ────────────────────────────────────────
 
+# Máximo plausível de avanço entre duas posições consecutivas (delta_t ≤ 600s).
+# A ~130 km/h em 10 min dá ~21,7 km; usamos 30 km como teto e filtramos:
+#  - saltos negativos (reset do contador / troca de escala/fonte),
+#  - saltos gigantes (oscilação do odômetro GPS entre escalas, ex.: 1295 ↔ 974828).
+_KM_SALTO_MAX = 30.0       # km entre posições
+_CONSUMO_SALTO_MAX = 50.0  # litros entre posições
+
+
+def _soma_deltas_plausiveis(serie: pd.Series, cap: float):
+    """Soma só os incrementos consecutivos positivos e plausíveis (0 < d ≤ cap).
+    Robusto a reset do contador e a odômetro que oscila entre escalas."""
+    s = pd.to_numeric(serie, errors='coerce').dropna()
+    if len(s) < 2:
+        return None, (float(s.iloc[0]) if len(s) else None), (float(s.iloc[-1]) if len(s) else None)
+    d = s.diff()
+    d = d[(d > 0) & (d <= cap)]
+    return float(d.sum()), float(s.iloc[0]), float(s.iloc[-1])
+
+
 def _km_e_consumo(df: pd.DataFrame):
-    odometros = df['odometro_km'].dropna()
-    if len(odometros) >= 2:
-        ini, fim = odometros.iloc[0], odometros.iloc[-1]
-        km = max(0.0, float(fim - ini))
-    else:
-        km, ini, fim = 0.0, None, None
+    km, ini, fim = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
+    km = round(km, 3) if km is not None else 0.0
 
-    consumo = None
-    if df['consumo_total_l'].notna().any():
-        c = df['consumo_total_l'].dropna()
-        consumo = float(c.iloc[-1] - c.iloc[0]) if len(c) >= 2 else None
+    consumo, _, _ = _soma_deltas_plausiveis(df['consumo_total_l'], _CONSUMO_SALTO_MAX)
+    consumo = round(consumo, 3) if consumo is not None else None
 
-    return round(km, 3), ini, fim, consumo
+    return km, ini, fim, consumo
 
 
 def _velocidade(df: pd.DataFrame):
@@ -252,22 +266,26 @@ def _faixas_acelerador(df: pd.DataFrame, tempo_total_s: float) -> dict:
     }
 
 
-def _detectar_frenagens(df: pd.DataFrame) -> dict:
+def _detectar_frenagens(df: pd.DataFrame, km_total: float) -> dict:
     totais = normais = bruscas = alta_vel = 0
 
     # Detectar via evento_id (frenagem brusca já detectada pela Multiportal)
     frenagens_evento = df[df['evento_id'] == 13654]
     bruscas_evento   = len(frenagens_evento)
 
-    # Detectar via Δv/Δt para as demais (quando temos velocidade)
+    # Detectar via Δv/Δt para as demais (quando temos velocidade). O delta_t é
+    # RECALCULADO dentro do subconjunto de posições com velocidade — senão o Δv
+    # seria dividido por um intervalo defasado (linhas sem velocidade no meio),
+    # forjando frenagens bruscas falsas. Descartamos pares muito espaçados (>60s).
     df_vel = df[df['velocidade'].notna()].copy()
     df_vel['vel_anterior'] = df_vel['velocidade'].shift(1)
-    df_vel = df_vel.dropna(subset=['vel_anterior', 'delta_t'])
-    df_vel = df_vel[df_vel['delta_t'] > 0]
+    df_vel['dt_vel'] = df_vel['ts'].diff().dt.total_seconds()
+    df_vel = df_vel.dropna(subset=['vel_anterior', 'dt_vel'])
+    df_vel = df_vel[(df_vel['dt_vel'] > 0) & (df_vel['dt_vel'] <= 60)]
 
     for _, row in df_vel.iterrows():
         resultado = clf.classificar_frenagem(
-            float(row['vel_anterior']), float(row['velocidade']), float(row['delta_t']),
+            float(row['vel_anterior']), float(row['velocidade']), float(row['dt_vel']),
         )
         if resultado.tipo:
             totais += 1
@@ -283,16 +301,15 @@ def _detectar_frenagens(df: pd.DataFrame) -> dict:
     bruscas = max(bruscas, bruscas_evento)
     totais  = max(totais, bruscas + normais)
 
-    km_total_approx = df['odometro_km'].dropna()
-    km = float(km_total_approx.iloc[-1] - km_total_approx.iloc[0]) \
-         if len(km_total_approx) >= 2 else 1.0
+    # Reutiliza o km_total JÁ SANEADO; sem km confiável (≤0) não fabrica índice.
+    por_100km = round(totais / km_total * 100, 2) if km_total and km_total > 0 else None
 
     return {
         'frenagens_totais':          totais,
         'frenagens_normais':         normais,
         'frenagens_bruscas':         bruscas,
         'frenagens_alta_velocidade': alta_vel,
-        'frenagens_por_100km':       round(totais / km * 100, 2) if km > 0 else 0.0,
+        'frenagens_por_100km':       por_100km,
     }
 
 
@@ -307,7 +324,9 @@ def _motor_ocioso(df: pd.DataFrame, tempo_total_s: float) -> dict:
     df_ocioso['grupo'] = (df_ocioso.index.to_series().diff() > 1).cumsum()
     tempo_penalizado = 0.0
     for _, grupo in df_ocioso.groupby('grupo'):
-        duracao = float(grupo['delta_t'].sum())
+        # O delta_t da 1ª linha da sequência é o intervalo desde a leitura ANTERIOR
+        # (possivelmente em movimento) — não faz parte da parada. Somamos do 2º em diante.
+        duracao = float(grupo['delta_t'].iloc[1:].sum())
         if duracao > TOLERANCIA:
             tempo_penalizado += (duracao - TOLERANCIA)
 
@@ -318,15 +337,15 @@ def _motor_ocioso(df: pd.DataFrame, tempo_total_s: float) -> dict:
 
 
 def _excesso_velocidade(df: pd.DataFrame) -> dict:
-    # Janelas de 1h
-    df2 = df.set_index('ts').resample('1h').agg(
-        total=('velocidade', 'count'),
-        acima=('velocidade', lambda v: (v > cfg.velocidade_excesso_kmh).sum()),
-    ).reset_index()
-    df2['perc'] = df2['acima'] / df2['total'].replace(0, 1) * 100
-    # Média das janelas — cada janela pesa igual
-    perc_medio = float(df2['perc'].mean()) if not df2.empty else 0.0
-    return {'perc_excesso_velocidade': round(perc_medio, 2)}
+    # % do TEMPO com velocidade acima do limite, sobre o tempo com velocidade
+    # medida (ponderado por delta_t). Evita a diluição de janelas horárias vazias
+    # e a contagem por nº de posições da versão anterior.
+    dfv = df[df['velocidade'].notna()]
+    tempo_com_vel = float(dfv['delta_t'].sum())
+    if tempo_com_vel <= 0:
+        return {'perc_excesso_velocidade': 0.0}
+    tempo_acima = float(dfv[dfv['velocidade'] > cfg.velocidade_excesso_kmh]['delta_t'].sum())
+    return {'perc_excesso_velocidade': round(tempo_acima / tempo_com_vel * 100, 2)}
 
 
 async def _salvar_indicador(conn: asyncpg.Connection, ind: dict):
