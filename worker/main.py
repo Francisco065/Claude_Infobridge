@@ -872,6 +872,53 @@ async def debug_frenagens(placa: str = 'QOD5557'):
         await db.close()
 
 
+@api.get('/debug/acelerador')
+async def debug_acelerador(placa: str = 'QOD5557'):
+    """Distribuição de perc_acelerador do mês: cobertura, min/max/média, histograma
+    por faixa e a fonte — para ver se há dado real de pedal ou se vem sempre 0."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        s = await db.fetchrow(
+            """
+            SELECT COUNT(*)                                            AS leituras,
+                   COUNT(lt.perc_acelerador)                           AS com_acel,
+                   MIN(lt.perc_acelerador)                             AS minimo,
+                   MAX(lt.perc_acelerador)                             AS maximo,
+                   ROUND(AVG(lt.perc_acelerador)::numeric, 2)          AS media,
+                   COUNT(*) FILTER (WHERE lt.perc_acelerador = 0)      AS zero,
+                   COUNT(*) FILTER (WHERE lt.perc_acelerador > 0  AND lt.perc_acelerador <= 60) AS ate_60,
+                   COUNT(*) FILTER (WHERE lt.perc_acelerador > 60 AND lt.perc_acelerador <= 70) AS f_61_70,
+                   COUNT(*) FILTER (WHERE lt.perc_acelerador > 70)     AS acima_70
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2
+            """,
+            placa, inicio,
+        )
+        fontes = await db.fetch(
+            """
+            SELECT COALESCE(fonte_acelerador, '(nulo)') AS k, COUNT(*) AS n
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2 GROUP BY 1 ORDER BY 2 DESC
+            """,
+            placa, inicio,
+        )
+        f = lambda x: float(x) if x is not None else None
+        return {
+            'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+            'leituras': s['leituras'], 'com_acelerador': s['com_acel'],
+            'min': f(s['minimo']), 'max': f(s['maximo']), 'media': f(s['media']),
+            'histograma': {
+                'igual_a_0': s['zero'], '1_a_60_ideal': s['ate_60'],
+                '61_a_70_atencao': s['f_61_70'], 'acima_70_critico': s['acima_70'],
+            },
+            'fonte_acelerador': {r['k']: r['n'] for r in fontes},
+        }
+    finally:
+        await db.close()
+
+
 @api.get('/debug/odometro')
 async def debug_odometro(placa: str = 'QOD5557'):
     """Diagnóstico do odômetro/km do mês para uma placa: cobertura, min/max,
