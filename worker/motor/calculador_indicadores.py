@@ -217,8 +217,15 @@ def _km_e_consumo(df: pd.DataFrame):
         km_calc, _, _ = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
         km = round(km_calc, 3) if km_calc is not None else 0.0
 
-    # Odômetro inicial/final do período (primeira/última leitura válida).
-    _, ini, fim = _soma_deltas_plausiveis(df['odometro_km'], _KM_SALTO_MAX)
+    # Odômetro inicial/final na ESCALA DOMINANTE (o hodômetro real). O odômetro
+    # GPS deste equipamento oscila entre duas escalas (ex.: ~34 mil e ~974 mil);
+    # descartamos a menor (< 50% do máximo) para exibir o valor real, não o glitch.
+    odo = pd.to_numeric(df['odometro_km'], errors='coerce').dropna()
+    if len(odo):
+        dominante = odo[odo >= float(odo.max()) * 0.5]
+        ini, fim = float(dominante.min()), float(dominante.max())
+    else:
+        ini = fim = None
 
     consumo, _, _ = _soma_deltas_plausiveis(df['consumo_total_l'], _CONSUMO_SALTO_MAX)
     consumo = round(consumo, 3) if consumo is not None else None
