@@ -287,7 +287,13 @@ def _faixas_rpm(df: pd.DataFrame, tempo_total_s: float) -> dict:
     for faixa, grupo in df[df['faixa_rpm'].notna()].groupby('faixa_rpm'):
         contagens[faixa] = float(grupo['delta_t'].sum())
 
-    def pct(v): return round(v / tempo_total_s * 100, 2) if tempo_total_s else 0.0
+    # RPM só faz sentido com o motor FUNCIONANDO (chave ligada): chave desligada
+    # = motor parado. Denominador = tempo com ignição ligada (fallback: tempo total
+    # quando não há dado de ignição).
+    tempo_ligado_s = float(df[df['ignicao'] == True]['delta_t'].sum())
+    base = tempo_ligado_s if tempo_ligado_s > 0 else tempo_total_s
+
+    def pct(v): return round(v / base * 100, 2) if base else 0.0
 
     return {
         'perc_faixa_verde_inicial':  pct(contagens['verde_inicial']),
