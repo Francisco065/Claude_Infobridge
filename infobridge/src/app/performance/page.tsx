@@ -110,6 +110,7 @@ export default function PerformancePage() {
   const [mapSelectedPlates, setMapSelectedPlates] = useState<string[]>([]);
   const [mapEventsOn, setMapEventsOn] = useState({ start: true, end: true, stop: true, speed: true, brake: true });
   const [rotas, setRotas] = useState<Record<string, Rota>>({});
+  const [notaReal, setNotaReal] = useState<number | null>(null);
 
   const leafletPronto = useLeaflet();
   const mapDivRef = useRef<HTMLDivElement | null>(null);
@@ -240,6 +241,16 @@ export default function PerformancePage() {
   // limpa cache de rotas ao trocar de período
   useEffect(() => { setRotas({}); }, [periodo.de, periodo.ate]);
 
+  // Nota de desempenho OFICIAL (a mesma da Info Análise) — indicador mensal.
+  const mesNota = periodMode === "fechado"
+    ? (closedMonthKey || mesesFechados[0]?.key)
+    : `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`;
+  useEffect(() => {
+    if (!token || viewMode !== "veiculo" || !selectedPlate) { setNotaReal(null); return; }
+    apiFetch<{ nota: number | null }>(`/performance/nota?placa=${encodeURIComponent(selectedPlate)}&mes=${mesNota}`, token)
+      .then((r) => setNotaReal(r?.nota ?? null)).catch(() => setNotaReal(null));
+  }, [token, viewMode, selectedPlate, mesNota]);
+
   const corDe = (placa: string) => veiculos.find((v) => v.placa === placa)?.cor ?? VINHO;
 
   // Inicializa o mapa
@@ -295,17 +306,10 @@ export default function PerformancePage() {
   const maxBrake = Math.max(1, ...porDia.map((d) => d.brakesTotal));
   const passo = Math.max(1, Math.ceil(dias.length / 12));
 
-  // Nota de desempenho (heurística placeholder, conforme handoff)
-  const nota = (() => {
-    const mov = porDia.reduce((s, d) => s + d.ignMovingMin, 0), idle = porDia.reduce((s, d) => s + d.ignIdleMin, 0);
-    const idlePct = mov + idle > 0 ? (idle / (mov + idle)) * 100 : 0;
-    const bTot = kpi.brakes, bHigh = kpi.brakesHigh;
-    const brakePen = bTot > 0 ? (bHigh / bTot) * 100 * 0.5 : 0;
-    const speedPen = kpi.velMax > 110 ? 12 : kpi.velMax > 100 ? 6 : 0;
-    return Math.max(0, Math.min(100, Math.round(100 - idlePct * 0.55 - brakePen - speedPen)));
-  })();
-  const notaCor = nota >= 80 ? VERDE : nota >= 40 ? AMBAR : VERMELHO;
-  const notaLabel = nota >= 80 ? "Excelente" : nota >= 60 ? "Regular" : nota >= 40 ? "Atenção" : "Crítico";
+  // Nota de desempenho: a MESMA da Info Análise (indicador mensal do backend).
+  const nota = notaReal;
+  const notaCor = nota == null ? "#9A9DA5" : nota >= 80 ? VERDE : nota >= 40 ? AMBAR : VERMELHO;
+  const notaLabel = nota == null ? "Sem dados" : nota >= 80 ? "Excelente" : nota >= 60 ? "Regular" : nota >= 40 ? "Atenção" : "Crítico";
 
   const veiculoSel = veiculos.find((v) => v.placa === selectedPlate);
 
@@ -412,8 +416,8 @@ export default function PerformancePage() {
                   <Eyebrow icone="ti-gauge">Nota de desempenho</Eyebrow>
                   <svg width="150" height="150" viewBox="0 0 150 150">
                     <circle cx="75" cy="75" r="42" fill="none" stroke="#EDEFF2" strokeWidth="8" />
-                    <circle cx="75" cy="75" r="42" fill="none" stroke={notaCor} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(nota / 100) * 2 * Math.PI * 42} ${2 * Math.PI * 42}`} transform="rotate(-90 75 75)" />
-                    <text x="75" y="72" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{nota}</text>
+                    {nota != null && <circle cx="75" cy="75" r="42" fill="none" stroke={notaCor} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(nota / 100) * 2 * Math.PI * 42} ${2 * Math.PI * 42}`} transform="rotate(-90 75 75)" />}
+                    <text x="75" y="72" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{nota == null ? "—" : nota}</text>
                     <text x="75" y="100" textAnchor="middle" fill="#6B6E76" fontSize="12">{notaLabel}</text>
                   </svg>
                   <p style={{ fontSize: 11, color: "#8A8D96", margin: "8px 0 0" }}>Referente ao período ({periodo.label})</p>

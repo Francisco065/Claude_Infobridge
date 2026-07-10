@@ -94,6 +94,31 @@ export class PerformanceService {
     return porPlaca;
   }
 
+  /**
+   * Nota de desempenho oficial (a MESMA da Info Análise): lê nota_desempenho do
+   * indicador mensal do veículo/período. mes = 'YYYY-MM'. Quando há mais de um
+   * motorista no mês, usa o dominante (maior km). Retorna null se não houver.
+   */
+  async notaMes(tenantId: string, placa: string, mes: string, empresaId?: string) {
+    const rows = await this.db.query(
+      `
+      SELECT ip.nota_desempenho AS nota, m.nome AS motorista
+      FROM   indicador_periodo ip
+      JOIN   veiculos v   ON v.id = ip.veiculo_id
+      LEFT JOIN motoristas m ON m.id = ip.motorista_id
+      WHERE  v.tenant_id = $1 AND v.placa = $2
+        AND  ip.periodo_inicio = ($3 || '-01')::date
+        AND  ip.nota_desempenho IS NOT NULL
+        AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+      ORDER BY ip.km_total DESC NULLS LAST
+      LIMIT 1
+      `,
+      [tenantId, placa, mes, empresaId ?? null],
+    );
+    const r = rows[0];
+    return { nota: r ? Number(r.nota) : null, motorista: r?.motorista ?? null };
+  }
+
   /** Rota (pontos GPS) + eventos de um veículo no período, para o mapa. */
   async rota(tenantId: string, placa: string, de: string, ate: string, empresaId?: string) {
     const rows = await this.db.query(

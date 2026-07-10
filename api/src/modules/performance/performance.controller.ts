@@ -28,6 +28,17 @@ export class PerformanceController {
     return this.perf.metricasDiarias(tenantId, de, ate, empresaId);
   }
 
+  @Get('nota')
+  @ApiOperation({ summary: 'Nota de desempenho oficial (mesma da Info Análise) do veículo no mês (mes=YYYY-MM)' })
+  nota(
+    @TenantId() tenantId: string,
+    @Query('placa') placa: string,
+    @Query('mes') mes: string,
+    @EmpresaScope() empresaId?: string,
+  ) {
+    return this.perf.notaMes(tenantId, placa, mes, empresaId);
+  }
+
   @Get('rota')
   @ApiOperation({ summary: 'Rota + eventos de um veículo no período (para o mapa)' })
   rota(
