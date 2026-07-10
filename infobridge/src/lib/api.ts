@@ -114,7 +114,11 @@ export async function apiFetch<T>(path: string, token: string): Promise<T> {
   if (!res.ok) {
     if (res.status === 401) sessaoExpirou();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    const e = new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
+    // Status numérico disponível para os chamadores (checar 401/403 pela
+    // mensagem não funciona — ela raramente contém o código).
+    (e as Error & { status?: number }).status = res.status;
+    throw e;
   }
   return res.json() as Promise<T>;
 }

@@ -83,18 +83,20 @@ function Chip({ icone, rotulo, valor }: { icone: string; rotulo: string; valor: 
 // ── Leaflet sob demanda (mesmo padrão do Mapa ao vivo) ────────
 function useLeaflet() {
   const [pronto, setPronto] = useState<boolean>(typeof window !== "undefined" && !!(window as any).L);
+  const [falhou, setFalhou] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || (window as any).L) { if ((window as any).L) setPronto(true); return; }
     if (!document.getElementById("leaflet-css")) {
       const link = document.createElement("link"); link.id = "leaflet-css"; link.rel = "stylesheet";
       link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(link);
     }
+    const aoFalhar = () => { setFalhou(true); document.getElementById("leaflet-js")?.remove(); };
     const ex = document.getElementById("leaflet-js") as HTMLScriptElement | null;
-    if (ex) { ex.addEventListener("load", () => setPronto(true)); return; }
+    if (ex) { ex.addEventListener("load", () => setPronto(true)); ex.addEventListener("error", aoFalhar); return; }
     const s = document.createElement("script"); s.id = "leaflet-js"; s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    s.onload = () => setPronto(true); document.body.appendChild(s);
+    s.onload = () => setPronto(true); s.onerror = aoFalhar; document.body.appendChild(s);
   }, []);
-  return pronto;
+  return { pronto, falhou };
 }
 
 export default function PerformancePage() {
@@ -120,9 +122,10 @@ export default function PerformancePage() {
   const [mapEventsOn, setMapEventsOn] = useState({ start: true, end: true, stop: true, speed: true, brake: true });
   const [rotas, setRotas] = useState<Record<string, Rota>>({});
   const [notaReal, setNotaReal] = useState<number | null>(null);
+  const [notaMotorista, setNotaMotorista] = useState<string | null>(null);
   const [resumo, setResumo] = useState<Resumo | null>(null);
 
-  const leafletPronto = useLeaflet();
+  const { pronto: leafletPronto, falhou: leafletFalhou } = useLeaflet();
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
@@ -157,22 +160,29 @@ export default function PerformancePage() {
     try {
       const vs = await apiFetch<Veiculo[]>("/performance/veiculos", tk);
       setVeiculos(Array.isArray(vs) ? vs : []);
-      if (vs?.[0] && !selectedPlate) setSelectedPlate(vs[0].placa);
+      // updater funcional: não depende de selectedPlate → callback estável,
+      // a lista de veículos é buscada UMA vez por sessão (não a cada troca).
+      if (vs?.[0]) setSelectedPlate((atual) => atual || vs[0].placa);
     } catch (e: any) {
-      if (/401|403/.test(e?.message || "")) { limparSessao(); setToken(null); }
+      if (e?.status === 401 || e?.status === 403) { limparSessao(); setToken(null); }
       else setErro(e?.message ?? "Erro ao carregar veículos");
     }
-  }, [selectedPlate]);
+  }, []);
 
+  // Sequência protege contra respostas fora de ordem (troca rápida de período:
+  // a resposta antiga que chega depois não sobrescreve a atual).
+  const diarioSeq = useRef(0);
   const carregarDiario = useCallback(async (tk: string) => {
+    const seq = ++diarioSeq.current;
     setCarregando(true); setErro("");
     try {
       const d = await apiFetch<Record<string, Dia[]>>(`/performance/diario?de=${periodo.de}&ate=${periodo.ate}`, tk);
-      setDiario(d ?? {});
+      if (seq === diarioSeq.current) setDiario(d ?? {});
     } catch (e: any) {
-      if (/401|403/.test(e?.message || "")) { limparSessao(); setToken(null); }
+      if (seq !== diarioSeq.current) return;
+      if (e?.status === 401 || e?.status === 403) { limparSessao(); setToken(null); }
       else setErro(e?.message ?? "Erro ao carregar dados");
-    } finally { setCarregando(false); }
+    } finally { if (seq === diarioSeq.current) setCarregando(false); }
   }, [periodo.de, periodo.ate]);
 
   useEffect(() => {
@@ -182,7 +192,16 @@ export default function PerformancePage() {
   }, [carregarBase]);
   useEffect(() => { if (token && podeAcessar("info-analise")) carregarDiario(token); }, [token, carregarDiario]);
 
+  // Zera todo estado por-tenant — sem isto, dados (placas, rotas, resumo) de
+  // um usuário vazavam para o próximo login na mesma aba.
+  const limparDados = useCallback(() => {
+    setVeiculos([]); setDiario({}); setRotas({}); setResumo(null);
+    setNotaReal(null); setNotaMotorista(null); setSelectedPlate(""); setMapSelectedPlates([]);
+    rotasPeriodoRef.current = "";
+  }, []);
+
   function handleLogin(tk: string, nome: string) {
+    limparDados();
     salvarSessao(tk, nome); setToken(tk); setNomeUsuario(nome);
     if (podeAcessar("info-analise")) { carregarBase(tk); carregarDiario(tk); }
   }
@@ -252,10 +271,11 @@ export default function PerformancePage() {
     const oficialAtualizado = resumo != null && resumo.registros > 0 && resumo.km >= kmTelemetria * 0.9;
     if (resumo && resumo.registros > 0 && oficialAtualizado) {
       return {
+        oficial: true,
         km: Math.round(resumo.km),
         fuel: resumo.consumo != null ? +resumo.consumo.toFixed(1) : 0,
         consumo: resumo.mediaKmL ?? 0,
-        velMedia: +resumo.velMedia.toFixed(1),
+        velMedia: +(resumo.velMedia ?? 0).toFixed(1),
         velMax: Math.round(resumo.velMax),
         brakes: resumo.frenagens,
         brakesHigh: resumo.frenagensAlta,
@@ -265,6 +285,7 @@ export default function PerformancePage() {
     const fuel = porDia.reduce((s, d) => s + (d.fuelL ?? 0), 0);
     const avg = porDia.filter((d) => d.avgSpeed > 0);
     return {
+      oficial: false,
       km: +km.toFixed(0), fuel: +fuel.toFixed(1), consumo: fuel > 0 ? +(km / fuel).toFixed(2) : 0,
       velMedia: avg.length ? +(avg.reduce((s, d) => s + d.avgSpeed, 0) / avg.length).toFixed(1) : 0,
       velMax: porDia.reduce((s, d) => Math.max(s, d.maxSpeed), 0),
@@ -275,54 +296,81 @@ export default function PerformancePage() {
 
   // ── Rotas para o mapa ───────────────────────────────────────
   const placasMapa = viewMode === "veiculo" ? (selectedPlate ? [selectedPlate] : []) : mapSelectedPlates;
+  // Cache de rotas é POR PERÍODO: ao trocar o período, limpa e rebusca no
+  // MESMO efeito (dois efeitos separados criavam corrida: a busca rodava antes
+  // do reset, via o cache antigo "cheio" e nunca rebuscava — mapa ficava
+  // vazio). Respostas de período/placas antigos são descartadas (chave + vivo).
+  const rotasPeriodoRef = useRef("");
   useEffect(() => {
     if (!token) return;
-    const faltando = placasMapa.filter((p) => !rotas[p]);
+    const chave = `${periodo.de}|${periodo.ate}`;
+    const cacheValido = rotasPeriodoRef.current === chave;
+    if (!cacheValido) { rotasPeriodoRef.current = chave; setRotas({}); }
+    const atuais = cacheValido ? rotas : {};
+    const faltando = placasMapa.filter((p) => !atuais[p]);
     if (!faltando.length) return;
+    let vivo = true;
     (async () => {
       const res: Record<string, Rota> = {};
       await Promise.all(faltando.map(async (p) => {
         try { res[p] = await apiFetch<Rota>(`/performance/rota?placa=${encodeURIComponent(p)}&de=${periodo.de}&ate=${periodo.ate}`, token); }
         catch { /* ignora */ }
       }));
-      setRotas((r) => ({ ...r, ...res }));
+      if (vivo && rotasPeriodoRef.current === chave) setRotas((r) => ({ ...r, ...res }));
     })();
+    return () => { vivo = false; };
   }, [placasMapa.join(","), periodo.de, periodo.ate, token]); // eslint-disable-line
-
-  // limpa cache de rotas ao trocar de período
-  useEffect(() => { setRotas({}); }, [periodo.de, periodo.ate]);
 
   // Nota de desempenho OFICIAL (a mesma da Info Análise) — indicador mensal.
   const mesNota = periodMode === "fechado"
     ? (closedMonthKey || mesesFechados[0]?.key)
     : `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`;
   useEffect(() => {
-    if (!token || viewMode !== "veiculo" || !selectedPlate) { setNotaReal(null); return; }
-    apiFetch<{ nota: number | null }>(`/performance/nota?placa=${encodeURIComponent(selectedPlate)}&mes=${mesNota}`, token)
-      .then((r) => setNotaReal(r?.nota ?? null)).catch(() => setNotaReal(null));
+    if (!token || viewMode !== "veiculo" || !selectedPlate) { setNotaReal(null); setNotaMotorista(null); return; }
+    let vivo = true;
+    setNotaReal(null); setNotaMotorista(null);
+    apiFetch<{ nota: number | null; motorista: string | null }>(`/performance/nota?placa=${encodeURIComponent(selectedPlate)}&mes=${mesNota}`, token)
+      .then((r) => { if (vivo) { setNotaReal(r?.nota ?? null); setNotaMotorista(r?.motorista ?? null); } })
+      .catch(() => { if (vivo) { setNotaReal(null); setNotaMotorista(null); } });
+    return () => { vivo = false; };
   }, [token, viewMode, selectedPlate, mesNota]);
 
   // Resumo OFICIAL do período (mesma fonte da Info Análise: indicador_periodo).
   // No modo veículo filtra pela placa; no modo frota soma todos os veículos.
   useEffect(() => {
     if (!token || !podeAcessar("info-analise")) { setResumo(null); return; }
+    let vivo = true;
+    setResumo(null); // não exibir resumo do escopo anterior enquanto carrega
     const placaQ = viewMode === "veiculo" && selectedPlate ? `&placa=${encodeURIComponent(selectedPlate)}` : "";
     apiFetch<Resumo>(`/performance/resumo?de=${periodo.de}&ate=${periodo.ate}${placaQ}`, token)
-      .then((r) => setResumo(r ?? null)).catch(() => setResumo(null));
+      .then((r) => { if (vivo) setResumo(r ?? null); })
+      .catch(() => { if (vivo) setResumo(null); });
+    return () => { vivo = false; };
   }, [token, periodo.de, periodo.ate, viewMode, selectedPlate]);
 
   const corDe = (placa: string) => veiculos.find((v) => v.placa === placa)?.cor ?? VINHO;
 
-  // Inicializa o mapa — precisa rodar SÓ quando o <div> do mapa já está no DOM
-  // (o conteúdo fica atrás do estado `carregando`/`erro`), por isso dependemos
-  // também de `carregando`/`erro`/`token`.
+  // Inicializa o mapa quando o <div> está no DOM (o conteúdo fica atrás de
+  // `carregando`/`erro`). IMPORTANTE: o cleanup destrói a instância quando o
+  // <div> desmonta (ex.: período trocado → tela de loading) — sem isso o mapa
+  // ficava preso a um nó destacado e nunca mais aparecia.
+  const mapTypeRef = useRef(mapType);
+  mapTypeRef.current = mapType;
   useEffect(() => {
     if (!leafletPronto || carregando || erro || !mapDivRef.current || mapRef.current) return;
     const L = (window as any).L;
     const map = L.map(mapDivRef.current, { zoomControl: true, attributionControl: true }).setView([-15.78, -47.92], 4);
     mapRef.current = map; layerRef.current = L.layerGroup().addTo(map);
-    tileRef.current = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" }).addTo(map);
-    setTimeout(() => map.invalidateSize(), 60);
+    tileRef.current = (mapTypeRef.current === "satellite"
+      ? L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 })
+      : L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" })
+    ).addTo(map);
+    const t = setTimeout(() => map.invalidateSize(), 60);
+    return () => {
+      clearTimeout(t);
+      map.remove();
+      mapRef.current = null; layerRef.current = null; tileRef.current = null;
+    };
   }, [leafletPronto, carregando, erro, token]);
 
   // Troca de tiles roadmap/satélite
@@ -361,7 +409,11 @@ export default function PerformancePage() {
     if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
   }, [placasMapa.join(","), rotas, viewMode, mapEventsOn]); // eslint-disable-line
 
-  useEffect(() => { desenharMapa(); setTimeout(() => mapRef.current?.invalidateSize(), 100); }, [desenharMapa, mapType, leafletPronto]);
+  useEffect(() => {
+    desenharMapa();
+    const t = setTimeout(() => mapRef.current?.invalidateSize(), 100);
+    return () => clearTimeout(t);
+  }, [desenharMapa, mapType, leafletPronto, carregando]);
 
   if (!token) return <LoginForm onLogin={handleLogin} />;
   if (!podeAcessar("info-analise")) return <SemAcesso destino={primeiraTelaPermitida()} />;
@@ -371,14 +423,16 @@ export default function PerformancePage() {
   const maxBrake = Math.max(1, ...porDia.map((d) => d.brakesTotal));
   const passo = Math.max(1, Math.ceil(dias.length / 12));
 
-  // Nota de desempenho: a MESMA da Info Análise (indicador mensal do backend).
-  // nota_desempenho é numeric(5,2) — pode vir com casas (ex.: 87,34). No medidor
-  // exibimos arredondada (0–100) para não estourar o círculo; a barra usa o valor cheio.
+  // Nota de desempenho: a MESMA da Info Análise (indicador mensal do backend),
+  // com as MESMAS faixas de cor/rótulo de lá (≥70 verde "Ótimo" · ≥40 âmbar
+  // "Regular" · <40 vermelho "Crítico") — sem divergência entre as páginas.
+  // nota_desempenho é numeric(5,2) — no medidor exibimos arredondada (0–100)
+  // para não estourar o círculo; a barra circular usa o valor cheio.
   const nota = notaReal;
   const notaTxt = nota == null ? "—" : String(Math.round(nota));
   const notaFonte = notaTxt.length >= 3 ? 36 : 46; // "100" menor que "0"–"99"
-  const notaCor = nota == null ? "#9A9DA5" : nota >= 80 ? VERDE : nota >= 40 ? AMBAR : VERMELHO;
-  const notaLabel = nota == null ? "Sem dados" : nota >= 80 ? "Excelente" : nota >= 60 ? "Regular" : nota >= 40 ? "Atenção" : "Crítico";
+  const notaCor = nota == null ? "#9A9DA5" : nota >= 70 ? VERDE : nota >= 40 ? AMBAR : VERMELHO;
+  const notaLabel = nota == null ? "Sem dados" : nota >= 70 ? "Ótimo" : nota >= 40 ? "Regular" : "Crítico";
 
   const veiculoSel = veiculos.find((v) => v.placa === selectedPlate);
 
@@ -397,10 +451,27 @@ export default function PerformancePage() {
     <div style={{ minHeight: "100vh", background: "#E9EBEF", fontFamily: SANS }}>
       <style>{`.ti{font-family:'tabler-icons'!important;font-style:normal} .perf-mk{background:none!important;border:none!important}
         @keyframes spin{to{transform:rotate(360deg)}}
-        @media print { .no-print{display:none!important} body{background:#fff} }`}</style>
+        .print-only{display:none}
+        @media print {
+          .no-print{display:none!important} body{background:#fff}
+          /* Sem isto os navegadores removem as cores de fundo e os gráficos saem em branco */
+          *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+          .print-only{display:block!important}
+        }
+        @media (max-width: 720px){ .perf-nota{grid-template-columns:1fr!important} }`}</style>
+
+      {/* Cabeçalho do PDF: título/período/veículo ficam nos blocos .no-print — sem
+          isto o relatório impresso sai sem nenhuma identificação. */}
+      <div className="print-only" style={{ padding: "14px 22px 0" }}>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#1F2024" }}>Relatório de Performance — Infobridge</div>
+        <div style={{ fontSize: 12, color: "#5A5D65", marginTop: 3 }}>
+          Período: {periodo.label}
+          {viewMode === "veiculo" && selectedPlate ? ` · Veículo: ${selectedPlate} · Motorista: ${veiculoSel?.motorista ?? "—"} · ${veiculoSel?.modelo ?? ""}` : ` · Frota: ${veiculos.length} veículo(s)`}
+        </div>
+      </div>
 
       {/* ===== HEADER ===== */}
-      <header className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#FFFFFF", padding: "0 22px", height: 60, borderBottom: "1px solid #ECEDF1", position: "sticky", top: 0, zIndex: 60 }}>
+      <header className="no-print" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, background: "#FFFFFF", padding: "8px 22px", minHeight: 60, borderBottom: "1px solid #ECEDF1", position: "sticky", top: 0, zIndex: 60 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <LogoInfobridge height={34} />
@@ -415,7 +486,7 @@ export default function PerformancePage() {
           <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F4EDED", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="ti ti-user" aria-hidden style={{ fontSize: 17, color: VINHO }} /></span>
           <span style={{ fontSize: 13, color: "#33363D", fontWeight: 500 }}>{nomeUsuario || "Administrador"}</span>
           {token && <BotaoTrocarSenha token={token} />}
-          <button onClick={() => { limparSessao(); setToken(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}><i className="ti ti-logout" aria-hidden style={{ fontSize: 15 }} /> Sair</button>
+          <button onClick={() => { limparSessao(); limparDados(); setToken(null); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#5A5D65", cursor: "pointer", fontFamily: SANS }}><i className="ti ti-logout" aria-hidden style={{ fontSize: 15 }} /> Sair</button>
         </div>
       </header>
 
@@ -489,10 +560,13 @@ export default function PerformancePage() {
                     <text x="80" y="78" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize={notaFonte} fontWeight="700" style={{ fontFamily: MONO }}>{notaTxt}</text>
                     <text x="80" y="106" textAnchor="middle" fill="#6B6E76" fontSize="12">{notaLabel}</text>
                   </svg>
-                  <p style={{ fontSize: 11, color: "#8A8D96", margin: "8px 0 0" }}>Referente ao período ({periodo.label})</p>
+                  <p style={{ fontSize: 11, color: "#8A8D96", margin: "8px 0 0" }}>
+                    Indicador mensal oficial · {(() => { const [y, m] = mesNota.split("-").map(Number); return `${MESES[m - 1]} ${y}`; })()}
+                  </p>
+                  {notaMotorista && <p style={{ fontSize: 11, color: "#6B6E76", margin: "3px 0 0" }}>Motorista: <b>{notaMotorista}</b></p>}
                 </div>
                 <div style={{ ...card, padding: 16 }}>
-                  <Eyebrow icone="ti-list-details">Resumo do período — {selectedPlate}</Eyebrow>
+                  <Eyebrow icone="ti-list-details">Resumo — {selectedPlate}{kpi.oficial ? " · indicador mensal oficial" : ` · ${periodo.label}`}</Eyebrow>
                   <KpiGrid kpis={kpis} />
                 </div>
               </div>
@@ -501,13 +575,13 @@ export default function PerformancePage() {
             {/* KPIs (frota) */}
             {viewMode === "frota" && (
               <div style={{ ...card, padding: 16 }}>
-                <Eyebrow icone="ti-layout-dashboard">Resumo do período</Eyebrow>
+                <Eyebrow icone="ti-layout-dashboard">Resumo do período{kpi.oficial ? " · indicador mensal oficial" : ""}</Eyebrow>
                 <KpiGrid kpis={kpis} />
               </div>
             )}
 
             {/* Km/dia + Combustível/dia */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 18 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 18 }}>
               <div style={{ ...card, padding: 18 }}>
                 <Eyebrow icone="ti-road">Km rodados por dia</Eyebrow>
                 <Barras dados={porDia.map((d) => ({ label: ddmm(d.date), valor: d.km }))} max={maxKm} cor={VINHO} passo={passo} showLabels={showLabels} sufixo="" />
@@ -528,7 +602,7 @@ export default function PerformancePage() {
                   const totOn = d.ignMovingMin + d.ignIdleMin;
                   return (
                     <div key={d.date} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      {showLabels && totOn > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2, whiteSpace: "nowrap" }}>{fmtMin(totOn)}</span>}
+                      {showLabels && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2, whiteSpace: "nowrap", minHeight: 12 }}>{totOn > 0 && i % passo === 0 ? fmtMin(totOn) : " "}</span>}
                       <div title={`Em movimento: ${fmtMin(d.ignMovingMin)} · Ocioso: ${fmtMin(d.ignIdleMin)} · Desligada: ${fmtMin(d.ignOffMin)}`} style={{ width: "100%", height: 150, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                         <div style={{ height: `${d.ignOffMin / tot * 100}%`, background: CINZA }} />
                         <div style={{ height: `${d.ignIdleMin / tot * 100}%`, background: AMBAR }} />
@@ -555,7 +629,7 @@ export default function PerformancePage() {
               <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 140, marginTop: 10 }}>
                 {porDia.map((d, i) => (
                   <div key={d.date} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    {showLabels && d.brakesTotal > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2 }}>{d.brakesTotal}</span>}
+                    {showLabels && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2, minHeight: 12 }}>{d.brakesTotal > 0 && i % passo === 0 ? d.brakesTotal : " "}</span>}
                     <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 120, width: "100%", justifyContent: "center" }}>
                       <div title={`Totais: ${d.brakesTotal}`} style={{ width: "42%", height: `${d.brakesTotal / maxBrake * 100}%`, background: VERMELHO, borderRadius: "3px 3px 0 0", minHeight: d.brakesTotal ? 2 : 0 }} />
                       <div title={`Alta vel.: ${d.brakesHigh}`} style={{ width: "42%", height: `${d.brakesHigh / maxBrake * 100}%`, background: AMBAR, borderRadius: "3px 3px 0 0", minHeight: d.brakesHigh ? 2 : 0 }} />
@@ -583,13 +657,18 @@ export default function PerformancePage() {
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 320, position: "relative" }}>
                   <div ref={mapDivRef} style={{ height: 460, borderRadius: 12, overflow: "hidden", border: "1px solid #E7E9ED", background: "#E9EBEF" }} />
+                  {leafletFalhou && (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(233,235,239,.9)", borderRadius: 12, textAlign: "center", padding: 20 }}>
+                      <div><i className="ti ti-wifi-off" aria-hidden style={{ fontSize: 30, color: "#8A8D96" }} /><div style={{ fontSize: 14, color: "#5A5D65", fontWeight: 600, marginTop: 8 }}>Não foi possível carregar o mapa</div><div style={{ fontSize: 12, color: "#8A8D96", marginTop: 4 }}>Verifique a conexão com a internet e recarregue a página.</div></div>
+                    </div>
+                  )}
                   {viewMode === "frota" && placasMapa.length === 0 && (
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(233,235,239,.75)", borderRadius: 12, textAlign: "center", padding: 20 }}>
                       <div><i className="ti ti-map-search" aria-hidden style={{ fontSize: 30, color: "#8A8D96" }} /><div style={{ fontSize: 14, color: "#5A5D65", fontWeight: 600, marginTop: 8 }}>Selecione ao menos um veículo</div><div style={{ fontSize: 12, color: "#8A8D96", marginTop: 4 }}>Marque veículos na lista ao lado para desenhar as rotas.</div></div>
                     </div>
                   )}
                   {viewMode === "veiculo" && rotas[selectedPlate]?.pontos?.length ? (
-                    <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, ...card, padding: 12, width: 210, fontSize: 12 }}>
+                    <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, ...card, padding: 12, width: 210, fontSize: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#8A8D96", marginBottom: 8 }}>Resumo do trajeto · {selectedPlate}</div>
                       <ResumoTrajeto porDia={porDia} resumo={resumo} />
                     </div>
@@ -614,7 +693,11 @@ export default function PerformancePage() {
                             <input type="checkbox" checked={on} onChange={() => setMapSelectedPlates((s) => on ? s.filter((p) => p !== v.placa) : [...s, v.placa])} />
                             <span style={{ width: 10, height: 10, borderRadius: "50%", background: v.cor, flexShrink: 0 }} />
                             <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: "#1F2024", flex: 1 }}>{v.placa}</span>
-                            <i className="ti ti-chevron-right" onClick={(e) => { e.preventDefault(); setSelectedPlate(v.placa); setViewMode("veiculo"); }} style={{ fontSize: 15, color: "#B4B7BE", cursor: "pointer" }} />
+                            <button type="button" aria-label={`Ver detalhes de ${v.placa}`}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedPlate(v.placa); setViewMode("veiculo"); }}
+                              style={{ background: "none", border: "none", padding: 2, cursor: "pointer", lineHeight: 0 }}>
+                              <i className="ti ti-chevron-right" aria-hidden style={{ fontSize: 15, color: "#B4B7BE" }} />
+                            </button>
                           </label>
                         );
                       })}
@@ -653,7 +736,9 @@ export default function PerformancePage() {
                           </div>
                         );
                       })}
-                      {!(rotas[selectedPlate]?.eventos?.length) && <span style={{ fontSize: 12, color: "#9A9DA4" }}>Sem posições no período.</span>}
+                      {rotas[selectedPlate] === undefined
+                        ? <span style={{ fontSize: 12, color: "#9A9DA4" }}><i className="ti ti-loader-2" aria-hidden style={{ fontSize: 13, display: "inline-block", animation: "spin 1s linear infinite" }} /> Carregando trajeto…</span>
+                        : !(rotas[selectedPlate]?.eventos?.length) && <span style={{ fontSize: 12, color: "#9A9DA4" }}>Sem posições no período.</span>}
                     </div>
                   </>)}
                 </div>
@@ -696,7 +781,7 @@ function Barras({ dados, max, cor, passo, showLabels, sufixo }: { dados: { label
     <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 160, marginTop: 6 }}>
       {dados.map((d, i) => (
         <div key={i} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
-          {showLabels && d.valor > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2 }}>{d.valor}</span>}
+          {showLabels && d.valor > 0 && i % passo === 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2, whiteSpace: "nowrap" }}>{d.valor}</span>}
           <div title={`${d.valor}${sufixo}`} style={{ width: "100%", height: `${d.valor / max * 130}px`, background: cor, borderRadius: "4px 4px 0 0", minHeight: d.valor ? 2 : 0 }} />
           <span style={{ fontSize: 8, color: "#9A9DA4", marginTop: 4, fontFamily: MONO }}>{i % passo === 0 ? d.label : ""}</span>
         </div>

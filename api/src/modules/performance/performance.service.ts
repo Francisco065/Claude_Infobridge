@@ -30,9 +30,16 @@ export class PerformanceService {
       `,
       [tenantId, empresaId ?? null],
     );
-    return rows.map((r: any, i: number) => ({
+    // Cor derivada da PLACA (hash estável), não da posição na lista — assim a
+    // cor de um veículo não muda quando a frota ganha/perde veículos.
+    const hash = (s: string) => {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      return Math.abs(h);
+    };
+    return rows.map((r: any) => ({
       placa: r.placa, modelo: r.modelo, motorista: r.motorista ?? null,
-      cor: PALETTE[i % PALETTE.length],
+      cor: PALETTE[hash(r.placa) % PALETTE.length],
     }));
   }
 
@@ -49,22 +56,46 @@ export class PerformanceService {
         SELECT v.placa,
                (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
                lt.velocidade, lt.ignicao, lt.is_motor_ocioso, lt.km_rodado,
-               lt.odometro_km,
-               lt.nivel_combustivel_pct, v.capacidade_tanque_l,
+               lt.odometro_km, lt.evento_id,
                LAG(lt.velocidade)             OVER w AS vel_ant,
                LAG(lt.odometro_km)            OVER w AS odo_ant,
-               LAG(lt.nivel_combustivel_pct)  OVER w AS nivel_ant,
                LEAST(EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)), 600) AS dt
         FROM   leitura_telemetria lt
         JOIN   veiculos v ON v.id = lt.veiculo_id
         WHERE  lt.tenant_id = $1
           AND  lt.ts >= ($2::date AT TIME ZONE 'America/Sao_Paulo')
           AND  lt.ts <  (($3::date + 1) AT TIME ZONE 'America/Sao_Paulo')
+          AND  lt.gps_valido IS TRUE
           AND  v.ativo = true
           AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
         WINDOW w AS (PARTITION BY lt.veiculo_id ORDER BY lt.ts)
-      )
-      SELECT placa, dia::text AS dia,
+      ),
+      -- Combustível como o worker calcula: LAG só sobre leituras COM nível
+      -- (pular NULLs não perde quedas) e cada queda limitada a 100% (ruído
+      -- de sensor não vira litros fantasmas).
+      niv AS (
+        SELECT placa, dia,
+               SUM(LEAST(GREATEST(nivel_ant - nivel, 0), 100)) AS queda_pct,
+               MAX(cap) AS cap
+        FROM (
+          SELECT v.placa,
+                 (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                 lt.nivel_combustivel_pct AS nivel, v.capacidade_tanque_l AS cap,
+                 LAG(lt.nivel_combustivel_pct) OVER (PARTITION BY lt.veiculo_id ORDER BY lt.ts) AS nivel_ant
+          FROM   leitura_telemetria lt
+          JOIN   veiculos v ON v.id = lt.veiculo_id
+          WHERE  lt.tenant_id = $1
+            AND  lt.ts >= ($2::date AT TIME ZONE 'America/Sao_Paulo')
+            AND  lt.ts <  (($3::date + 1) AT TIME ZONE 'America/Sao_Paulo')
+            AND  lt.gps_valido IS TRUE
+            AND  lt.nivel_combustivel_pct IS NOT NULL
+            AND  v.ativo = true
+            AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+        ) s
+        GROUP BY placa, dia
+      ),
+      agg AS (
+      SELECT placa, dia,
         -- km do dia: usa o km_rodado persistido pelo worker; quando ele ainda
         -- não foi calculado (leituras recentes que o recálculo horário não
         -- alcançou), CALCULA aqui o mesmo delta de odômetro saneado do worker
@@ -83,16 +114,26 @@ export class PerformanceService {
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND velocidade > 0), 0) / 60.0)::int AS mov_min,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND (velocidade IS NULL OR velocidade <= 0)), 0) / 60.0)::int AS idle_min,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS NOT TRUE), 0) / 60.0)::int AS off_min,
-        COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL
-                         AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_total,
+        -- Freadas: detecção Δv/Δt mesclada com o evento de frenagem brusca do
+        -- próprio equipamento (evento_id 13654), como o worker faz (max).
+        GREATEST(
+          COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL
+                           AND (vel_ant - velocidade) / 3.6 / dt >= 2.0),
+          COUNT(*) FILTER (WHERE evento_id = 13654)
+        )                                                                     AS brakes_total,
         COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL AND vel_ant > 70
-                         AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_high,
-        CASE WHEN MAX(capacidade_tanque_l) IS NULL THEN NULL
-             ELSE ROUND((SUM(GREATEST(COALESCE(nivel_ant, nivel_combustivel_pct) - nivel_combustivel_pct, 0))
-                         * MAX(capacidade_tanque_l) / 100.0)::numeric, 1) END AS fuel_l
+                         AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_high
       FROM   base
       GROUP BY placa, dia
-      ORDER BY placa, dia
+      )
+      SELECT a.placa, a.dia::text AS dia,
+             a.km, a.avg_speed, a.max_speed, a.mov_min, a.idle_min, a.off_min,
+             a.brakes_total, a.brakes_high,
+             CASE WHEN n.cap IS NULL THEN NULL
+                  ELSE ROUND((n.queda_pct * n.cap / 100.0)::numeric, 1) END   AS fuel_l
+      FROM   agg a
+      LEFT JOIN niv n ON n.placa = a.placa AND n.dia = a.dia
+      ORDER BY a.placa, a.dia
       `,
       [tenantId, de, ate, empresaId ?? null],
     );
@@ -121,9 +162,10 @@ export class PerformanceService {
       JOIN   veiculos v   ON v.id = ip.veiculo_id
       LEFT JOIN motoristas m ON m.id = ip.motorista_id
       WHERE  v.tenant_id = $1 AND v.placa = $2
+        AND  ip.tipo_periodo = 'mensal'
         AND  ip.periodo_inicio = ($3 || '-01')::date
         AND  ip.nota_desempenho IS NOT NULL
-        AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+        AND  ($4::uuid IS NULL OR m.empresa_id = $4::uuid)
       ORDER BY ip.km_total DESC NULLS LAST
       LIMIT 1
       `,
@@ -146,7 +188,12 @@ export class PerformanceService {
         COALESCE(SUM(ip.km_total), 0)                                         AS km,
         SUM(ip.consumo_total_litros)                                          AS consumo,
         COALESCE(MAX(ip.velocidade_max_kmh), 0)                               AS vel_max,
-        AVG(ip.velocidade_media_kmh) FILTER (WHERE ip.velocidade_media_kmh > 0) AS vel_media,
+        -- Média ponderada pelo tempo em movimento (como o worker calcula por
+        -- linha) — média simples distorceria veículos com poucos km.
+        SUM(ip.velocidade_media_kmh * ip.tempo_movimento_s)
+          FILTER (WHERE ip.velocidade_media_kmh > 0 AND ip.tempo_movimento_s > 0)
+        / NULLIF(SUM(ip.tempo_movimento_s)
+          FILTER (WHERE ip.velocidade_media_kmh > 0 AND ip.tempo_movimento_s > 0), 0) AS vel_media,
         COALESCE(SUM(ip.frenagens_totais), 0)                                 AS frenagens,
         COALESCE(SUM(ip.frenagens_alta_velocidade), 0)                        AS frenagens_alta,
         COALESCE(SUM(ip.frenagens_bruscas), 0)                                AS frenagens_bruscas,
@@ -155,14 +202,23 @@ export class PerformanceService {
         COALESCE(SUM(ip.tempo_movimento_s), 0)                                AS tempo_mov,
         COALESCE(SUM(ip.tempo_parado_s), 0)                                   AS tempo_parado,
         COUNT(*)                                                              AS registros
-      FROM   indicador_periodo ip
+      -- DISTINCT ON dedupe períodos parciais antigos (mesmo mês com
+      -- periodo_fim diferente): fica só o mais completo, evitando somar em
+      -- dobro km/litros. Sem filtro de v.ativo: indicadores históricos de
+      -- veículos desativados continuam contando (como na Info Análise).
+      FROM (
+        SELECT DISTINCT ON (ip.motorista_id, ip.veiculo_id, ip.periodo_inicio) ip.*
+        FROM   indicador_periodo ip
+        WHERE  ip.tenant_id = $1
+          AND  ip.tipo_periodo = 'mensal'
+          AND  ip.periodo_inicio >= date_trunc('month', $2::date)::date
+          AND  ip.periodo_inicio <= date_trunc('month', $3::date)::date
+        ORDER BY ip.motorista_id, ip.veiculo_id, ip.periodo_inicio, ip.periodo_fim DESC
+      ) ip
       JOIN   veiculos v ON v.id = ip.veiculo_id
-      WHERE  ip.tenant_id = $1 AND v.ativo = true
-        AND  ip.tipo_periodo = 'mensal'
-        AND  ip.periodo_inicio >= date_trunc('month', $2::date)::date
-        AND  ip.periodo_inicio <= date_trunc('month', $3::date)::date
-        AND  ($4::text IS NULL OR v.placa = $4)
-        AND  ($5::uuid IS NULL OR v.empresa_id = $5::uuid)
+      LEFT JOIN motoristas m ON m.id = ip.motorista_id
+      WHERE  ($4::text IS NULL OR v.placa = $4)
+        AND  ($5::uuid IS NULL OR m.empresa_id = $5::uuid)
       `,
       [tenantId, de, ate, placa ?? null, empresaId ?? null],
     );
@@ -193,7 +249,8 @@ export class PerformanceService {
       `
       SELECT lt.ts, lt.latitude, lt.longitude, lt.velocidade, lt.ignicao, lt.is_motor_ocioso,
              LAG(lt.velocidade) OVER w AS vel_ant,
-             LEAST(EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)), 3600) AS dt
+             LEAST(EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)), 3600) AS dt,
+             EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w))              AS gap_s
       FROM   leitura_telemetria lt
       JOIN   veiculos v ON v.id = lt.veiculo_id
       WHERE  lt.tenant_id = $1 AND v.placa = $2 AND v.ativo = true
@@ -201,6 +258,7 @@ export class PerformanceService {
         AND  lt.ts <  (($4::date + 1) AT TIME ZONE 'America/Sao_Paulo')
         AND  ($5::uuid IS NULL OR v.empresa_id = $5::uuid)
         AND  lt.latitude IS NOT NULL AND lt.longitude IS NOT NULL
+        AND  lt.gps_valido IS TRUE
       WINDOW w AS (PARTITION BY lt.veiculo_id ORDER BY lt.ts)
       ORDER BY lt.ts
       `,
@@ -213,24 +271,48 @@ export class PerformanceService {
       timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).replace(',', ' ·');
 
-    rows.forEach((r: any, i: number) => {
+    rows.forEach((r: any) => {
       const lat = num(r.latitude), lng = num(r.longitude);
       if (lat === null || lng === null) return;
       const idx = pontos.length;
-      pontos.push([lat, lng]);
+      // 5 casas decimais ≈ 1,1 m de precisão — suficiente para o mapa e corta
+      // o payload quase pela metade.
+      pontos.push([+lat.toFixed(5), +lng.toFixed(5)]);
       const vel = Number(r.velocidade ?? 0), velAnt = Number(r.vel_ant ?? 0), dt = Number(r.dt ?? 0);
+      const gap = Number(r.gap_s ?? 0);
       // Excesso de velocidade (> 90 km/h)
       if (vel > 90) eventos.push({ type: 'speed', idx, label: `Excesso de velocidade · ${vel} km/h`, time: brt(r.ts) });
       // Frenagem brusca (Δv/Δt ≥ 2,94 m/s²)
       if (dt > 0 && velAnt > 0 && (velAnt - vel) / 3.6 / dt >= 2.94)
         eventos.push({ type: 'brake', idx, label: 'Frenagem brusca', time: brt(r.ts) });
-      // Parada longa (motor ocioso / parado por > 20 min entre posições)
-      if (dt >= 20 * 60 && (r.is_motor_ocioso === true || vel === 0))
-        eventos.push({ type: 'stop', idx, label: `Parada longa · ${Math.round(dt / 60)} min`, time: brt(r.ts) });
+      // Parada longa (> 20 min entre posições) — duração REAL (gap sem teto),
+      // exibida em h/min acima de 1h.
+      if (gap >= 20 * 60 && (r.is_motor_ocioso === true || vel === 0)) {
+        const min = Math.round(gap / 60);
+        const duracao = min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}` : `${min} min`;
+        eventos.push({ type: 'stop', idx, label: `Parada longa · ${duracao}`, time: brt(r.ts) });
+      }
     });
     if (pontos.length) {
       eventos.unshift({ type: 'start', idx: 0, label: 'Início do trajeto', time: brt(rows[0].ts) });
       eventos.push({ type: 'end', idx: pontos.length - 1, label: 'Fim do trajeto', time: brt(rows[rows.length - 1].ts) });
+    }
+
+    // Decimação: um mês a cada ~60s são ~44 mil pontos (~1 MB) por veículo.
+    // Mantém no máximo ~MAX_PONTOS, preservando primeiro/último e TODOS os
+    // pontos com evento (idx remapeado após a redução).
+    const MAX_PONTOS = 4000;
+    if (pontos.length > MAX_PONTOS) {
+      const passo = Math.ceil(pontos.length / MAX_PONTOS);
+      const manter = new Set<number>([0, pontos.length - 1]);
+      for (let i = 0; i < pontos.length; i += passo) manter.add(i);
+      for (const ev of eventos) manter.add(ev.idx);
+      const ordenados = [...manter].sort((a, b) => a - b);
+      const novoIdx = new Map<number, number>();
+      ordenados.forEach((antigo, novo) => novoIdx.set(antigo, novo));
+      const pontosRed = ordenados.map((i) => pontos[i]);
+      for (const ev of eventos) ev.idx = novoIdx.get(ev.idx)!;
+      return { pontos: pontosRed, eventos };
     }
     return { pontos, eventos };
   }

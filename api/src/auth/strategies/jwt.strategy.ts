@@ -9,6 +9,8 @@ export interface JwtPayload {
   email:        string;
   perfil:       string;
   isSuperAdmin: boolean;
+  acessoTotal?: boolean;
+  telas?:       string[];
 }
 
 @Injectable()
@@ -28,6 +30,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email:        payload.email,
       perfil:       payload.perfil,
       isSuperAdmin: payload.isSuperAdmin ?? false,
+      acessoTotal:  payload.acessoTotal ?? false,
+      telas:        payload.telas ?? [],
     };
   }
 }
