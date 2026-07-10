@@ -49,8 +49,10 @@ export class PerformanceService {
         SELECT v.placa,
                (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
                lt.velocidade, lt.ignicao, lt.is_motor_ocioso, lt.km_rodado,
+               lt.odometro_km,
                lt.nivel_combustivel_pct, v.capacidade_tanque_l,
                LAG(lt.velocidade)             OVER w AS vel_ant,
+               LAG(lt.odometro_km)            OVER w AS odo_ant,
                LAG(lt.nivel_combustivel_pct)  OVER w AS nivel_ant,
                LEAST(EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)), 600) AS dt
         FROM   leitura_telemetria lt
@@ -63,7 +65,15 @@ export class PerformanceService {
         WINDOW w AS (PARTITION BY lt.veiculo_id ORDER BY lt.ts)
       )
       SELECT placa, dia::text AS dia,
-        ROUND(COALESCE(SUM(GREATEST(km_rodado, 0)), 0)::numeric, 1)           AS km,
+        -- km do dia: usa o km_rodado persistido pelo worker; quando ele ainda
+        -- não foi calculado (leituras recentes que o recálculo horário não
+        -- alcançou), CALCULA aqui o mesmo delta de odômetro saneado do worker
+        -- (0 < Δ ≤ 30 km por posição). Sem isso, dias recentes apareciam zerados.
+        ROUND(COALESCE(SUM(GREATEST(COALESCE(
+          km_rodado,
+          CASE WHEN odometro_km - odo_ant > 0 AND odometro_km - odo_ant <= 30
+               THEN odometro_km - odo_ant ELSE 0 END
+        ), 0)), 0)::numeric, 1)                                               AS km,
         ROUND(COALESCE(AVG(velocidade) FILTER (WHERE velocidade > 0), 0)::numeric, 1) AS avg_speed,
         COALESCE(MAX(velocidade), 0)                                          AS max_speed,
         -- Ignição em 3 estados MUTUAMENTE EXCLUSIVOS e exaustivos (mov + ocioso +

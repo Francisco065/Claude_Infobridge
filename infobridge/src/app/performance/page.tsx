@@ -222,9 +222,12 @@ export default function PerformancePage() {
     // e todos os dias com rodagem exibem valor. Sem resumo, cai para a estimativa
     // por queda de nível calculada na telemetria.
     const totalTelemetria = base.reduce((s, d) => s + (d.fuelRaw ?? 0), 0);
-    const totalOficial = resumo?.consumo ?? null;
-    const totalFuel = totalOficial != null ? totalOficial : totalTelemetria;
     const totalKm = base.reduce((s, d) => s + d.km, 0);
+    // Usa o consumo oficial só quando o indicador mensal está em dia (km oficial
+    // compatível com o km observado); defasado, cai na estimativa da telemetria.
+    const indicadorEmDia = resumo != null && resumo.registros > 0 && resumo.km >= totalKm * 0.9;
+    const totalOficial = indicadorEmDia ? (resumo!.consumo ?? null) : null;
+    const totalFuel = totalOficial != null ? totalOficial : totalTelemetria;
     const temFuelPeriodo = totalOficial != null || base.some((d) => d.temFuel);
     return base.map((d) => ({
       ...d,
@@ -240,7 +243,14 @@ export default function PerformancePage() {
   // fonte da verdade para km, combustível, média km/L, velocidades e frenagens;
   // caso contrário cai para os valores derivados da telemetria diária.
   const kpi = useMemo(() => {
-    if (resumo && resumo.registros > 0) {
+    // Se o indicador mensal está DEFASADO (worker ainda não recalculou — km
+    // oficial claramente menor que o km observado na telemetria do período),
+    // usa a telemetria para não exibir totais de 2 dias ao lado de gráficos
+    // com o mês inteiro. Quando o indicador está em dia, ele prevalece
+    // (mesma fonte da Info Análise).
+    const kmTelemetria = porDia.reduce((s, d) => s + d.km, 0);
+    const oficialAtualizado = resumo != null && resumo.registros > 0 && resumo.km >= kmTelemetria * 0.9;
+    if (resumo && resumo.registros > 0 && oficialAtualizado) {
       return {
         km: Math.round(resumo.km),
         fuel: resumo.consumo != null ? +resumo.consumo.toFixed(1) : 0,
@@ -721,8 +731,9 @@ function LinhaDupla({ dados, corA, corB, passo, showLabels }: { dados: { label: 
 function ResumoTrajeto({ porDia, resumo }: { porDia: any[]; resumo: Resumo | null }) {
   // Fonte oficial (indicador mensal, mesma da Info Análise) quando disponível;
   // fallback para os agregados diários da telemetria.
-  const oficial = resumo && resumo.registros > 0 ? resumo : null;
-  const km = oficial ? oficial.km : porDia.reduce((s, d) => s + d.km, 0);
+  const kmTele = porDia.reduce((s, d) => s + d.km, 0);
+  const oficial = resumo && resumo.registros > 0 && resumo.km >= kmTele * 0.9 ? resumo : null;
+  const km = oficial ? oficial.km : kmTele;
   const mov = oficial ? oficial.tempoMovS / 60 : porDia.reduce((s, d) => s + d.ignMovingMin, 0);
   const off = oficial ? oficial.tempoParadoS / 60 : porDia.reduce((s, d) => s + d.ignOffMin, 0);
   const idle = oficial ? oficial.tempoOciosoPenalizadoS / 60 : porDia.reduce((s, d) => s + d.ignIdleMin, 0);
