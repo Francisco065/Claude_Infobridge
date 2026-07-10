@@ -141,6 +141,7 @@ export class PerformanceService {
         COALESCE(SUM(ip.frenagens_alta_velocidade), 0)                        AS frenagens_alta,
         COALESCE(SUM(ip.frenagens_bruscas), 0)                                AS frenagens_bruscas,
         AVG(ip.perc_motor_ocioso)                                             AS perc_ocioso,
+        COALESCE(SUM(ip.tempo_motor_ocioso_penalizado_s), 0)                  AS tempo_ocioso_pen,
         COALESCE(SUM(ip.tempo_movimento_s), 0)                                AS tempo_mov,
         COALESCE(SUM(ip.tempo_parado_s), 0)                                   AS tempo_parado,
         COUNT(*)                                                              AS registros
@@ -170,6 +171,7 @@ export class PerformanceService {
       frenagensAlta: Number(r.frenagens_alta ?? 0),
       frenagensBruscas: Number(r.frenagens_bruscas ?? 0),
       percOcioso: num(r.perc_ocioso) ?? 0,
+      tempoOciosoPenalizadoS: Number(r.tempo_ocioso_pen ?? 0),
       tempoMovS: Number(r.tempo_mov ?? 0),
       tempoParadoS: Number(r.tempo_parado ?? 0),
     };

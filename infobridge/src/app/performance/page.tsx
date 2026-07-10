@@ -27,8 +27,12 @@ type Rota = { pontos: [number, number][]; eventos: Evento[] };
 type Resumo = {
   registros: number; km: number; consumo: number | null; mediaKmL: number | null;
   velMedia: number; velMax: number; frenagens: number; frenagensAlta: number;
-  frenagensBruscas: number; percOcioso: number; tempoMovS: number; tempoParadoS: number;
+  frenagensBruscas: number; percOcioso: number; tempoOciosoPenalizadoS: number;
+  tempoMovS: number; tempoParadoS: number;
 };
+
+// Minutos → texto: acima de 59 min exibe em horas ("1h05"); abaixo, "42min".
+const fmtMin = (min: number) => min >= 60 ? `${Math.floor(min / 60)}h${pad2(Math.round(min % 60))}` : `${Math.round(min)}min`;
 
 const EVENTO_ICONE: Record<string, { icon: string; bg: string; cor: string }> = {
   start: { icon: "ti-flag-3", bg: "#E7F6EC", cor: "#16A34A" },
@@ -514,8 +518,8 @@ export default function PerformancePage() {
                   const totOn = d.ignMovingMin + d.ignIdleMin;
                   return (
                     <div key={d.date} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      {showLabels && totOn > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2 }}>{Math.round(totOn / 60)}h</span>}
-                      <div title={`Mov: ${d.ignMovingMin}min · Ocioso: ${d.ignIdleMin}min · Deslig.: ${d.ignOffMin}min`} style={{ width: "100%", height: 150, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                      {showLabels && totOn > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2, whiteSpace: "nowrap" }}>{fmtMin(totOn)}</span>}
+                      <div title={`Em movimento: ${fmtMin(d.ignMovingMin)} · Ocioso: ${fmtMin(d.ignIdleMin)} · Desligada: ${fmtMin(d.ignOffMin)}`} style={{ width: "100%", height: 150, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                         <div style={{ height: `${d.ignOffMin / tot * 100}%`, background: CINZA }} />
                         <div style={{ height: `${d.ignIdleMin / tot * 100}%`, background: AMBAR }} />
                         <div style={{ height: `${d.ignMovingMin / tot * 100}%`, background: VERDE }} />
@@ -577,7 +581,7 @@ export default function PerformancePage() {
                   {viewMode === "veiculo" && rotas[selectedPlate]?.pontos?.length ? (
                     <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, ...card, padding: 12, width: 210, fontSize: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: "#8A8D96", marginBottom: 8 }}>Resumo do trajeto · {selectedPlate}</div>
-                      <ResumoTrajeto porDia={porDia} />
+                      <ResumoTrajeto porDia={porDia} resumo={resumo} />
                     </div>
                   ) : null}
                 </div>
@@ -606,6 +610,15 @@ export default function PerformancePage() {
                       })}
                     </div>
                   </>) : (<>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#33363D" }}>Veículo no mapa</span>
+                      <select value={selectedPlate} onChange={(e) => setSelectedPlate(e.target.value)} style={{ ...selBase, width: "100%" }}>
+                        {veiculos.map((v) => <option key={v.placa} value={v.placa}>{v.placa} — {v.motorista ?? "Sem motorista"}</option>)}
+                      </select>
+                      <button onClick={() => setViewMode("frota")} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#FFFFFF", border: "1px solid #DDE0E6", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: VINHO, cursor: "pointer", fontFamily: SANS }}>
+                        <i className="ti ti-arrow-left" aria-hidden style={{ fontSize: 15 }} /> Voltar à frota
+                      </button>
+                    </div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "#33363D" }}>Eventos a exibir</span>
                     <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "8px 0 14px" }}>
                       {[{ k: "start", label: "Início / fim" }, { k: "stop", label: "Paradas longas" }, { k: "speed", label: "Excesso de velocidade" }, { k: "brake", label: "Frenagem brusca" }].map((it) => {
@@ -705,11 +718,16 @@ function LinhaDupla({ dados, corA, corB, passo, showLabels }: { dados: { label: 
     </div>
   );
 }
-function ResumoTrajeto({ porDia }: { porDia: any[] }) {
-  const km = porDia.reduce((s, d) => s + d.km, 0);
-  const mov = porDia.reduce((s, d) => s + d.ignMovingMin, 0), idle = porDia.reduce((s, d) => s + d.ignIdleMin, 0), off = porDia.reduce((s, d) => s + d.ignOffMin, 0);
-  const fuel = porDia.reduce((s, d) => s + (d.fuelL ?? 0), 0);
-  const hm = (min: number) => `${Math.floor(min / 60)}h${pad2(Math.round(min % 60))}`;
+function ResumoTrajeto({ porDia, resumo }: { porDia: any[]; resumo: Resumo | null }) {
+  // Fonte oficial (indicador mensal, mesma da Info Análise) quando disponível;
+  // fallback para os agregados diários da telemetria.
+  const oficial = resumo && resumo.registros > 0 ? resumo : null;
+  const km = oficial ? oficial.km : porDia.reduce((s, d) => s + d.km, 0);
+  const mov = oficial ? oficial.tempoMovS / 60 : porDia.reduce((s, d) => s + d.ignMovingMin, 0);
+  const off = oficial ? oficial.tempoParadoS / 60 : porDia.reduce((s, d) => s + d.ignOffMin, 0);
+  const idle = oficial ? oficial.tempoOciosoPenalizadoS / 60 : porDia.reduce((s, d) => s + d.ignIdleMin, 0);
+  const fuel = oficial ? (oficial.consumo ?? 0) : porDia.reduce((s, d) => s + (d.fuelL ?? 0), 0);
+  const hm = fmtMin;
   const linha = (label: string, valor: string, cor: string) => (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "2px 0" }}><span style={{ color: "#6B6E76" }}>{label}</span><span style={{ fontWeight: 700, fontFamily: MONO, color: cor }}>{valor}</span></div>
   );
