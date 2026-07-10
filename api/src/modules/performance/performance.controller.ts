@@ -73,6 +73,12 @@ export class PerformanceController {
     return this.perf.resumoIndicador(tenantId, de, ate, placa || undefined, empresaId);
   }
 
+  @Get('status')
+  @ApiOperation({ summary: 'Saúde dos dados: última telemetria ingerida e último recálculo de indicadores' })
+  status(@TenantId() tenantId: string, @EmpresaScope() empresaId?: string) {
+    return this.perf.statusDados(tenantId, empresaId);
+  }
+
   @Get('rota')
   @ApiOperation({ summary: 'Rota + eventos de um veículo no período (para o mapa)' })
   rota(

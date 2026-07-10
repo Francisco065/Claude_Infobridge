@@ -269,6 +269,42 @@ export class PerformanceService {
     };
   }
 
+  /**
+   * Saúde dos DADOS do tenant: quando chegou a última leitura de telemetria
+   * (ingestão viva?) e quando os indicadores do mês corrente foram
+   * recalculados pela última vez (motor de cálculo vivo?). Alimenta o
+   * badge de status na página — parada de ingestão fica visível na hora.
+   */
+  async statusDados(tenantId: string, empresaId?: string) {
+    const rows = await this.db.query(
+      `
+      SELECT
+        (SELECT MAX(lt.ts) FROM leitura_telemetria lt
+          JOIN veiculos v ON v.id = lt.veiculo_id
+          WHERE lt.tenant_id = $1
+            AND ($2::uuid IS NULL OR v.empresa_id = $2::uuid))            AS ultima_leitura,
+        (SELECT COUNT(*) FROM leitura_telemetria lt
+          JOIN veiculos v ON v.id = lt.veiculo_id
+          WHERE lt.tenant_id = $1
+            AND lt.ts >= (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo')
+            AND ($2::uuid IS NULL OR v.empresa_id = $2::uuid))            AS leituras_hoje,
+        (SELECT MAX(ip.calculado_em) FROM indicador_periodo ip
+          WHERE ip.tenant_id = $1 AND ip.tipo_periodo = 'mensal'
+            AND ip.periodo_inicio = date_trunc('month', CURRENT_DATE)::date) AS ultimo_calculo
+      `,
+      [tenantId, empresaId ?? null],
+    );
+    const r = rows[0] ?? {};
+    const minutos = (ts: any) => (ts ? Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000)) : null);
+    return {
+      ultimaLeitura: r.ultima_leitura ?? null,
+      minutosDesdeUltimaLeitura: minutos(r.ultima_leitura),
+      leiturasHoje: Number(r.leituras_hoje ?? 0),
+      ultimoCalculo: r.ultimo_calculo ?? null,
+      minutosDesdeUltimoCalculo: minutos(r.ultimo_calculo),
+    };
+  }
+
   /** Rota (pontos GPS) + eventos de um veículo no período, para o mapa. */
   async rota(tenantId: string, placa: string, de: string, ate: string, empresaId?: string) {
     const rows = await this.db.query(

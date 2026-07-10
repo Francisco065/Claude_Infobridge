@@ -43,6 +43,27 @@ cfg = get_settings()
 
 _running = True
 
+# ── Heartbeat dos loops (vigiado pelo watchdog e exposto no /health) ─────────
+# Cada loop registra quando TERMINOU um ciclo (com ou sem erro) e quando o
+# último ciclo BEM-SUCEDIDO aconteceu. Se um loop morrer/travar, o watchdog
+# derruba o processo (os._exit) e o Railway reinicia o container — o motor
+# volta sozinho em vez de ficar parado em silêncio perdendo dados.
+_hb: dict[str, Any] = {
+    'iniciado_em':          datetime.now(timezone.utc),
+    'polling_ultimo_ok':    None,   # último ciclo concluído sem erro
+    'polling_ultimo_fim':   None,   # última tentativa concluída (ok ou erro)
+    'polling_ultimo_erro':  None,
+    'polling_posicoes':     0,      # posições gravadas no último ciclo OK
+    'recalc_ultimo_ok':     None,
+    'recalc_ultimo_fim':    None,
+    'recalc_ultimo_erro':   None,
+}
+
+# Tempo máximo de UM ciclo — um travamento (ex.: conexão pendurada) vira
+# exceção em vez de paralisar o loop para sempre.
+_POLL_TIMEOUT_S = int(os.getenv('POLL_TIMEOUT', '600'))     # 10 min
+_CALC_TIMEOUT_S = int(os.getenv('CALC_TIMEOUT', '1800'))    # 30 min
+
 # Estatística de componentes Multiportal vistos no polling (diagnóstico).
 # Acumula {id_componente: {'count': n, 'exemplo': valor}} de forma não destrutiva.
 _comp_stats: dict[int, dict] = {}
@@ -315,9 +336,14 @@ async def _loop_recalculo():
     await asyncio.sleep(int(os.getenv('CALC_INICIAL_DELAY', '60')))
     while _running:
         try:
-            await _recalcular_mes_atual()
+            await asyncio.wait_for(_recalcular_mes_atual(), timeout=_CALC_TIMEOUT_S)
+            _hb['recalc_ultimo_ok'] = datetime.now(timezone.utc)
+            _hb['recalc_ultimo_erro'] = None
         except Exception as e:
             log.error('recalculo.erro_geral', error=str(e))
+            _hb['recalc_ultimo_erro'] = str(e)[:300]
+        finally:
+            _hb['recalc_ultimo_fim'] = datetime.now(timezone.utc)
         await asyncio.sleep(interval)
 
 
@@ -328,10 +354,45 @@ async def _loop():
     log.info('worker.iniciando', interval_s=interval)
     while _running:
         try:
-            await _polling_todos()
+            resumo = await asyncio.wait_for(_polling_todos(), timeout=_POLL_TIMEOUT_S)
+            _hb['polling_ultimo_ok'] = datetime.now(timezone.utc)
+            _hb['polling_ultimo_erro'] = None
+            _hb['polling_posicoes'] = sum(d.get('posicoes', 0) for d in resumo.get('detalhes', []))
         except Exception as e:
             log.error('polling.erro_geral', error=str(e))
+            _hb['polling_ultimo_erro'] = str(e)[:300]
+        finally:
+            _hb['polling_ultimo_fim'] = datetime.now(timezone.utc)
         await asyncio.sleep(interval)
+
+
+# ── Watchdog: reinicia o processo se um loop morrer/travar ────
+
+async def _loop_watchdog():
+    """Se o polling ou o recálculo pararem de concluir ciclos (task morta,
+    await pendurado além do timeout, bug não previsto), derruba o processo —
+    o Railway reinicia o container e o motor volta sozinho. Sem isto, o
+    processo ficava "vivo" com /health ok e sem ingerir dados."""
+    poll_int = int(os.getenv('POLLING_INTERVAL', str(cfg.multiportal_polling_interval)))
+    calc_int = int(os.getenv('CALC_INTERVAL', '3600'))
+    limite_poll = max(3 * poll_int, 900) + _POLL_TIMEOUT_S
+    limite_calc = 2 * calc_int + _CALC_TIMEOUT_S
+    while _running:
+        await asyncio.sleep(60)
+        agora = datetime.now(timezone.utc)
+
+        def atraso(chave: str) -> float:
+            ultimo = _hb[chave] or _hb['iniciado_em']
+            return (agora - ultimo).total_seconds()
+
+        if atraso('polling_ultimo_fim') > limite_poll:
+            log.error('watchdog.polling_travado', atraso_s=int(atraso('polling_ultimo_fim')),
+                      ultimo_erro=_hb['polling_ultimo_erro'])
+            os._exit(1)
+        if atraso('recalc_ultimo_fim') > limite_calc:
+            log.error('watchdog.recalculo_travado', atraso_s=int(atraso('recalc_ultimo_fim')),
+                      ultimo_erro=_hb['recalc_ultimo_erro'])
+            os._exit(1)
 
 
 # ── FastAPI ───────────────────────────────────────────────────
@@ -361,18 +422,58 @@ async def lifespan(app: FastAPI):
         log.error('startup.garantir_colunas_erro', error=str(e))
     t_poll = asyncio.create_task(_loop())
     t_calc = asyncio.create_task(_loop_recalculo())
+    t_dog  = asyncio.create_task(_loop_watchdog())
     yield
     _running = False
     t_poll.cancel()
     t_calc.cancel()
+    t_dog.cancel()
 
 
 api = FastAPI(title='Infobridge Worker', lifespan=lifespan)
 
 
 @api.get('/health')
-def health():
-    return {'status': 'ok', 'service': 'infobridge-worker'}
+def health(response: Response):
+    """Saúde REAL do motor: verifica se os loops estão concluindo ciclos.
+    Retorna 503 quando degradado — configure este path como healthcheck no
+    Railway para reinício automático também por aqui."""
+    agora = datetime.now(timezone.utc)
+    poll_int = int(os.getenv('POLLING_INTERVAL', str(cfg.multiportal_polling_interval)))
+    calc_int = int(os.getenv('CALC_INTERVAL', '3600'))
+
+    def seg(chave: str):
+        return int((agora - _hb[chave]).total_seconds()) if _hb[chave] else None
+
+    uptime = int((agora - _hb['iniciado_em']).total_seconds())
+    degradado: list[str] = []
+    s_poll = seg('polling_ultimo_ok')
+    if s_poll is None or s_poll > max(3 * poll_int, 900):
+        degradado.append('polling')
+    s_calc = seg('recalc_ultimo_ok')
+    if s_calc is None or s_calc > 2 * calc_int + 1800:
+        degradado.append('recalculo')
+    # Carência de startup: primeiro ciclo ainda pode não ter rodado.
+    if uptime < max(2 * poll_int, 300):
+        degradado = [d for d in degradado if d != 'polling']
+    if uptime < calc_int + 600:
+        degradado = [d for d in degradado if d != 'recalculo']
+
+    if degradado:
+        response.status_code = 503
+    return {
+        'status': 'degradado' if degradado else 'ok',
+        'service': 'infobridge-worker',
+        'uptime_s': uptime,
+        'degradado': degradado,
+        'polling': {
+            'ultimo_ok_s': s_poll, 'ultimo_erro': _hb['polling_ultimo_erro'],
+            'posicoes_ultimo_ciclo': _hb['polling_posicoes'], 'intervalo_s': poll_int,
+        },
+        'recalculo': {
+            'ultimo_ok_s': s_calc, 'ultimo_erro': _hb['recalc_ultimo_erro'], 'intervalo_s': calc_int,
+        },
+    }
 
 
 class IndicadoresRequest(BaseModel):

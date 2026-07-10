@@ -30,6 +30,10 @@ type Resumo = {
   frenagensBruscas: number; percOcioso: number; tempoOciosoPenalizadoS: number;
   tempoMovS: number; tempoParadoS: number;
 };
+type StatusDados = {
+  ultimaLeitura: string | null; minutosDesdeUltimaLeitura: number | null;
+  leiturasHoje: number; ultimoCalculo: string | null; minutosDesdeUltimoCalculo: number | null;
+};
 
 // Minutos → texto: acima de 59 min exibe em horas ("1h05"); abaixo, "42min".
 const fmtMin = (min: number) => min >= 60 ? `${Math.floor(min / 60)}h${pad2(Math.round(min % 60))}` : `${Math.round(min)}min`;
@@ -124,6 +128,7 @@ export default function PerformancePage() {
   const [notaReal, setNotaReal] = useState<number | null>(null);
   const [notaMotorista, setNotaMotorista] = useState<string | null>(null);
   const [resumo, setResumo] = useState<Resumo | null>(null);
+  const [statusDados, setStatusDados] = useState<StatusDados | null>(null);
 
   const { pronto: leafletPronto, falhou: leafletFalhou } = useLeaflet();
   const mapDivRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +353,20 @@ export default function PerformancePage() {
     return () => { vivo = false; };
   }, [token, periodo.de, periodo.ate, viewMode, selectedPlate]);
 
+  // Saúde da ingestão/recálculo — badge no topo, atualizado a cada 5 min.
+  // Se o motor parar (worker morto, credencial vencida), fica visível na hora
+  // em vez de descobrirmos dias depois pelos gráficos vazios.
+  useEffect(() => {
+    if (!token || !podeAcessar("info-analise")) { setStatusDados(null); return; }
+    let vivo = true;
+    const buscar = () => apiFetch<StatusDados>("/performance/status", token)
+      .then((s) => { if (vivo) setStatusDados(s ?? null); })
+      .catch(() => { if (vivo) setStatusDados(null); });
+    buscar();
+    const timer = setInterval(buscar, 5 * 60 * 1000);
+    return () => { vivo = false; clearInterval(timer); };
+  }, [token]);
+
   const corDe = (placa: string) => veiculos.find((v) => v.placa === placa)?.cor ?? VINHO;
 
   // Inicializa o mapa quando o <div> está no DOM (o conteúdo fica atrás de
@@ -534,6 +553,21 @@ export default function PerformancePage() {
           </>) : (
             <Chip icone="ti-truck-delivery" rotulo="Veículos na frota" valor={String(veiculos.length)} />
           )}
+          {statusDados && (() => {
+            const mt = statusDados.minutosDesdeUltimaLeitura;
+            const mc = statusDados.minutosDesdeUltimoCalculo;
+            const cor = mt == null || mt > 180 ? VERMELHO : mt > 30 ? AMBAR : VERDE;
+            const txt = mt == null ? "sem dados" : `há ${fmtMin(mt)}`;
+            return (
+              <span title={`Última telemetria: ${txt} · Leituras hoje: ${statusDados.leiturasHoje.toLocaleString("pt-BR")} · Indicadores recalculados: ${mc == null ? "—" : `há ${fmtMin(mc)}`}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#F6F7F9", border: "1px solid #E2E4E9", borderRadius: 100, padding: "6px 13px", fontSize: 12 }}>
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: cor, flexShrink: 0 }} />
+                <span style={{ color: "#8A8D96" }}>Motor de dados</span>
+                <span style={{ color: "#1F2024", fontWeight: 700, fontFamily: MONO }}>{txt}</span>
+                {mc != null && mc > 150 && <i className="ti ti-alert-triangle" aria-hidden title="Recálculo de indicadores atrasado" style={{ fontSize: 14, color: AMBAR }} />}
+              </span>
+            );
+          })()}
         </div>
       </div>
 
