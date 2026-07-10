@@ -56,9 +56,8 @@ export class PerformanceService {
         SELECT v.placa,
                (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
                lt.velocidade, lt.ignicao, lt.is_motor_ocioso, lt.km_rodado,
-               lt.odometro_km, lt.evento_id,
+               lt.evento_id,
                LAG(lt.velocidade)             OVER w AS vel_ant,
-               LAG(lt.odometro_km)            OVER w AS odo_ant,
                LEAST(EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)), 600) AS dt
         FROM   leitura_telemetria lt
         JOIN   veiculos v ON v.id = lt.veiculo_id
@@ -94,17 +93,37 @@ export class PerformanceService {
         ) s
         GROUP BY placa, dia
       ),
+      -- Delta de odômetro por dia, com LAG que PULA leituras sem odômetro
+      -- (LAG cru contra NULL zerava o km do dia quando o odômetro vinha
+      -- esparso). Saneamento igual ao worker: 0 < Δ ≤ 30 km por posição.
+      odo AS (
+        SELECT placa, dia,
+               SUM(CASE WHEN odometro_km - odo_ant > 0 AND odometro_km - odo_ant <= 30
+                        THEN odometro_km - odo_ant ELSE 0 END) AS km_odo
+        FROM (
+          SELECT v.placa,
+                 (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                 lt.odometro_km,
+                 LAG(lt.odometro_km) OVER (PARTITION BY lt.veiculo_id ORDER BY lt.ts) AS odo_ant
+          FROM   leitura_telemetria lt
+          JOIN   veiculos v ON v.id = lt.veiculo_id
+          WHERE  lt.tenant_id = $1
+            AND  lt.ts >= ($2::date AT TIME ZONE 'America/Sao_Paulo')
+            AND  lt.ts <  (($3::date + 1) AT TIME ZONE 'America/Sao_Paulo')
+            AND  lt.odometro_km IS NOT NULL
+            AND  v.ativo = true
+            AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+        ) s
+        GROUP BY placa, dia
+      ),
       agg AS (
       SELECT placa, dia,
-        -- km do dia: usa o km_rodado persistido pelo worker; quando ele ainda
-        -- não foi calculado (leituras recentes que o recálculo horário não
-        -- alcançou), CALCULA aqui o mesmo delta de odômetro saneado do worker
-        -- (0 < Δ ≤ 30 km por posição). Sem isso, dias recentes apareciam zerados.
-        ROUND(COALESCE(SUM(GREATEST(COALESCE(
-          km_rodado,
-          CASE WHEN odometro_km - odo_ant > 0 AND odometro_km - odo_ant <= 30
-               THEN odometro_km - odo_ant ELSE 0 END
-        ), 0)), 0)::numeric, 1)                                               AS km,
+        -- km via km_rodado persistido pelo worker (fonte primária)
+        ROUND(COALESCE(SUM(GREATEST(km_rodado, 0)), 0)::numeric, 1)           AS km_worker,
+        -- km estimado por velocidade × tempo (último recurso quando não há
+        -- odômetro nem km_rodado — a velocidade vem em toda posição GPS)
+        ROUND(COALESCE(SUM(velocidade * dt / 3600.0)
+                       FILTER (WHERE velocidade > 0 AND dt > 0), 0)::numeric, 1) AS km_vel,
         ROUND(COALESCE(AVG(velocidade) FILTER (WHERE velocidade > 0), 0)::numeric, 1) AS avg_speed,
         COALESCE(MAX(velocidade), 0)                                          AS max_speed,
         -- Ignição em 3 estados MUTUAMENTE EXCLUSIVOS e exaustivos (mov + ocioso +
@@ -127,12 +146,19 @@ export class PerformanceService {
       GROUP BY placa, dia
       )
       SELECT a.placa, a.dia::text AS dia,
-             a.km, a.avg_speed, a.max_speed, a.mov_min, a.idle_min, a.off_min,
+             -- Cadeia de fontes do km: worker → delta de odômetro → velocidade×tempo.
+             -- Garante km em todo dia com movimento, mesmo com o recálculo do
+             -- worker atrasado ou odômetro ausente nas leituras novas.
+             CASE WHEN a.km_worker > 0 THEN a.km_worker
+                  WHEN COALESCE(o.km_odo, 0) > 0 THEN ROUND(o.km_odo::numeric, 1)
+                  ELSE a.km_vel END                                           AS km,
+             a.avg_speed, a.max_speed, a.mov_min, a.idle_min, a.off_min,
              a.brakes_total, a.brakes_high,
              CASE WHEN n.cap IS NULL THEN NULL
                   ELSE ROUND((n.queda_pct * n.cap / 100.0)::numeric, 1) END   AS fuel_l
       FROM   agg a
       LEFT JOIN niv n ON n.placa = a.placa AND n.dia = a.dia
+      LEFT JOIN odo o ON o.placa = a.placa AND o.dia = a.dia
       ORDER BY a.placa, a.dia
       `,
       [tenantId, de, ate, empresaId ?? null],
