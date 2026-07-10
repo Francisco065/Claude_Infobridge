@@ -192,7 +192,7 @@ export default function PerformancePage() {
     [viewMode, selectedPlate, veiculos],
   );
   const porDia = useMemo(() => {
-    return dias.map((date) => {
+    const base = dias.map((date) => {
       let km = 0, fuel = 0, temFuel = false, movMin = 0, idleMin = 0, offMin = 0, brakesT = 0, brakesH = 0;
       let velSum = 0, velCount = 0, velMax = 0;
       for (const placa of placasEscopo) {
@@ -204,8 +204,23 @@ export default function PerformancePage() {
         if (r.avgSpeed > 0) { velSum += r.avgSpeed; velCount++; }
         velMax = Math.max(velMax, r.maxSpeed);
       }
-      return { date, km: +km.toFixed(1), fuelL: temFuel ? +fuel.toFixed(1) : null, ignMovingMin: movMin, ignIdleMin: idleMin, ignOffMin: offMin, brakesTotal: brakesT, brakesHigh: brakesH, avgSpeed: velCount ? +(velSum / velCount).toFixed(1) : 0, maxSpeed: velMax };
+      return { date, km: +km.toFixed(1), fuelRaw: temFuel ? +fuel.toFixed(1) : null, temFuel, ignMovingMin: movMin, ignIdleMin: idleMin, ignOffMin: offMin, brakesTotal: brakesT, brakesHigh: brakesH, avgSpeed: velCount ? +(velSum / velCount).toFixed(1) : 0, maxSpeed: velMax };
     });
+    // Combustível é estimado por queda do nível do tanque — que só aparece em
+    // alguns dias (leitura esparsa). Para todos os dias com rodagem exibirem um
+    // valor coerente, distribuímos o total estimado do período proporcionalmente
+    // ao km rodado de cada dia (o somatório permanece igual ao total real).
+    const totalFuel = base.reduce((s, d) => s + (d.fuelRaw ?? 0), 0);
+    const totalKm = base.reduce((s, d) => s + d.km, 0);
+    const algumFuel = base.some((d) => d.temFuel);
+    return base.map((d) => ({
+      ...d,
+      fuelL: !algumFuel
+        ? null
+        : totalKm > 0
+          ? +((totalFuel * d.km) / totalKm).toFixed(1)
+          : (d.fuelRaw ?? 0),
+    }));
   }, [dias, placasEscopo, diario]);
 
   // KPIs agregados
@@ -253,14 +268,17 @@ export default function PerformancePage() {
 
   const corDe = (placa: string) => veiculos.find((v) => v.placa === placa)?.cor ?? VINHO;
 
-  // Inicializa o mapa
+  // Inicializa o mapa — precisa rodar SÓ quando o <div> do mapa já está no DOM
+  // (o conteúdo fica atrás do estado `carregando`/`erro`), por isso dependemos
+  // também de `carregando`/`erro`/`token`.
   useEffect(() => {
-    if (!leafletPronto || !mapDivRef.current || mapRef.current) return;
+    if (!leafletPronto || carregando || erro || !mapDivRef.current || mapRef.current) return;
     const L = (window as any).L;
     const map = L.map(mapDivRef.current, { zoomControl: true, attributionControl: true }).setView([-15.78, -47.92], 4);
     mapRef.current = map; layerRef.current = L.layerGroup().addTo(map);
     tileRef.current = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" }).addTo(map);
-  }, [leafletPronto]);
+    setTimeout(() => map.invalidateSize(), 60);
+  }, [leafletPronto, carregando, erro, token]);
 
   // Troca de tiles roadmap/satélite
   useEffect(() => {
@@ -281,7 +299,9 @@ export default function PerformancePage() {
     for (const placa of placasMapa) {
       const rota = rotas[placa]; if (!rota?.pontos?.length) continue;
       const cor = corDe(placa);
-      L.polyline(rota.pontos, { color: cor, weight: viewMode === "veiculo" ? 4 : 3, opacity: viewMode === "veiculo" ? 0.9 : 0.7 }).addTo(layer);
+      const linha = L.polyline(rota.pontos, { color: cor, weight: viewMode === "veiculo" ? 4 : 3, opacity: viewMode === "veiculo" ? 0.9 : 0.7 }).addTo(layer);
+      linha.bindTooltip(placa, { sticky: true, direction: "top" });
+      if (viewMode === "frota") linha.on("click", () => { setSelectedPlate(placa); setViewMode("veiculo"); });
       rota.pontos.forEach((p) => bounds.push(p));
       const eventos = viewMode === "veiculo"
         ? rota.eventos.filter((e) => (mapEventsOn as any)[e.type])
@@ -414,11 +434,11 @@ export default function PerformancePage() {
               <div style={{ display: "grid", gridTemplateColumns: "230px 1fr", gap: 18, alignItems: "stretch" }} className="perf-nota">
                 <div style={{ ...card, padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                   <Eyebrow icone="ti-gauge">Nota de desempenho</Eyebrow>
-                  <svg width="150" height="150" viewBox="0 0 150 150">
-                    <circle cx="75" cy="75" r="42" fill="none" stroke="#EDEFF2" strokeWidth="8" />
-                    {nota != null && <circle cx="75" cy="75" r="42" fill="none" stroke={notaCor} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(nota / 100) * 2 * Math.PI * 42} ${2 * Math.PI * 42}`} transform="rotate(-90 75 75)" />}
-                    <text x="75" y="72" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize="34" fontWeight="700" style={{ fontFamily: MONO }}>{nota == null ? "—" : nota}</text>
-                    <text x="75" y="100" textAnchor="middle" fill="#6B6E76" fontSize="12">{notaLabel}</text>
+                  <svg width="160" height="160" viewBox="0 0 160 160">
+                    <circle cx="80" cy="80" r="58" fill="none" stroke="#EDEFF2" strokeWidth="10" />
+                    {nota != null && <circle cx="80" cy="80" r="58" fill="none" stroke={notaCor} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(nota / 100) * 2 * Math.PI * 58} ${2 * Math.PI * 58}`} transform="rotate(-90 80 80)" />}
+                    <text x="80" y="76" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize={nota != null && nota >= 100 ? 34 : 42} fontWeight="700" style={{ fontFamily: MONO }}>{nota == null ? "—" : nota}</text>
+                    <text x="80" y="106" textAnchor="middle" fill="#6B6E76" fontSize="12">{notaLabel}</text>
                   </svg>
                   <p style={{ fontSize: 11, color: "#8A8D96", margin: "8px 0 0" }}>Referente ao período ({periodo.label})</p>
                 </div>
@@ -453,12 +473,14 @@ export default function PerformancePage() {
             <div style={{ ...card, padding: 18 }}>
               <Eyebrow icone="ti-engine">Ignição: ligada (movimento) x ligada (parado/ociosa) x desligada — por dia</Eyebrow>
               <Legenda itens={[{ cor: VERDE, label: "Em movimento" }, { cor: AMBAR, label: "Ligada, parado (ociosa)" }, { cor: CINZA, label: "Desligada" }]} />
-              <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 150, marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 3, alignItems: "flex-start", marginTop: 10 }}>
                 {porDia.map((d, i) => {
                   const tot = Math.max(1, d.ignMovingMin + d.ignIdleMin + d.ignOffMin);
+                  const totOn = d.ignMovingMin + d.ignIdleMin;
                   return (
-                    <div key={d.date} style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ height: 150, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    <div key={d.date} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      {showLabels && totOn > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2 }}>{Math.round(totOn / 60)}h</span>}
+                      <div title={`Mov: ${d.ignMovingMin}min · Ocioso: ${d.ignIdleMin}min · Deslig.: ${d.ignOffMin}min`} style={{ width: "100%", height: 150, borderRadius: 5, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                         <div style={{ height: `${d.ignOffMin / tot * 100}%`, background: CINZA }} />
                         <div style={{ height: `${d.ignIdleMin / tot * 100}%`, background: AMBAR }} />
                         <div style={{ height: `${d.ignMovingMin / tot * 100}%`, background: VERDE }} />
@@ -484,6 +506,7 @@ export default function PerformancePage() {
               <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 140, marginTop: 10 }}>
                 {porDia.map((d, i) => (
                   <div key={d.date} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    {showLabels && d.brakesTotal > 0 && <span style={{ fontSize: 8, color: "#6B6E76", fontFamily: MONO, marginBottom: 2 }}>{d.brakesTotal}</span>}
                     <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 120, width: "100%", justifyContent: "center" }}>
                       <div title={`Totais: ${d.brakesTotal}`} style={{ width: "42%", height: `${d.brakesTotal / maxBrake * 100}%`, background: VERMELHO, borderRadius: "3px 3px 0 0", minHeight: d.brakesTotal ? 2 : 0 }} />
                       <div title={`Alta vel.: ${d.brakesHigh}`} style={{ width: "42%", height: `${d.brakesHigh / maxBrake * 100}%`, background: AMBAR, borderRadius: "3px 3px 0 0", minHeight: d.brakesHigh ? 2 : 0 }} />
@@ -628,14 +651,19 @@ function LinhaDupla({ dados, corA, corB, passo, showLabels }: { dados: { label: 
   const W = 100, H = 140;
   const px = (i: number) => dados.length <= 1 ? 0 : (i / (dados.length - 1)) * W;
   const py = (v: number) => H - (v / max) * H;
-  const path = (key: "a" | "b") => dados.map((d, i) => `${i === 0 ? "M" : "L"} ${px(i)} ${py(d[key])}`).join(" ");
   return (
-    <div style={{ marginTop: 8 }}>
+    <div style={{ marginTop: 8, position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 140, overflow: "visible" }}>
         {[0.25, 0.5, 0.75].map((g) => <line key={g} x1={0} x2={W} y1={H * g} y2={H * g} stroke="#EDEFF2" strokeWidth={0.5} />)}
         <polyline points={dados.map((d, i) => `${px(i)},${py(d.a)}`).join(" ")} fill="none" stroke={corA} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         <polyline points={dados.map((d, i) => `${px(i)},${py(d.b)}`).join(" ")} fill="none" stroke={corB} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
       </svg>
+      {showLabels && dados.map((d, i) => (i % passo === 0 ? (
+        <span key={`a${i}`}>
+          <span style={{ position: "absolute", left: `${px(i)}%`, top: `${(py(d.a) / H) * 140 - 12}px`, transform: "translateX(-50%)", fontSize: 8, color: corA, fontFamily: MONO, whiteSpace: "nowrap" }}>{d.a}</span>
+          <span style={{ position: "absolute", left: `${px(i)}%`, top: `${(py(d.b) / H) * 140 + 3}px`, transform: "translateX(-50%)", fontSize: 8, color: corB, fontFamily: MONO, whiteSpace: "nowrap" }}>{d.b}</span>
+        </span>
+      ) : null))}
       <div style={{ display: "flex", gap: 3, marginTop: 4 }}>
         {dados.map((d, i) => <span key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: "#9A9DA4", fontFamily: MONO }}>{i % passo === 0 ? d.label : ""}</span>)}
       </div>
