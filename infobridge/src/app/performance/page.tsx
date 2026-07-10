@@ -358,7 +358,11 @@ export default function PerformancePage() {
   const passo = Math.max(1, Math.ceil(dias.length / 12));
 
   // Nota de desempenho: a MESMA da Info Análise (indicador mensal do backend).
+  // nota_desempenho é numeric(5,2) — pode vir com casas (ex.: 87,34). No medidor
+  // exibimos arredondada (0–100) para não estourar o círculo; a barra usa o valor cheio.
   const nota = notaReal;
+  const notaTxt = nota == null ? "—" : String(Math.round(nota));
+  const notaFonte = notaTxt.length >= 3 ? 36 : 46; // "100" menor que "0"–"99"
   const notaCor = nota == null ? "#9A9DA5" : nota >= 80 ? VERDE : nota >= 40 ? AMBAR : VERMELHO;
   const notaLabel = nota == null ? "Sem dados" : nota >= 80 ? "Excelente" : nota >= 60 ? "Regular" : nota >= 40 ? "Atenção" : "Crítico";
 
@@ -468,7 +472,7 @@ export default function PerformancePage() {
                   <svg width="160" height="160" viewBox="0 0 160 160">
                     <circle cx="80" cy="80" r="58" fill="none" stroke="#EDEFF2" strokeWidth="10" />
                     {nota != null && <circle cx="80" cy="80" r="58" fill="none" stroke={notaCor} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(nota / 100) * 2 * Math.PI * 58} ${2 * Math.PI * 58}`} transform="rotate(-90 80 80)" />}
-                    <text x="80" y="76" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize={nota != null && nota >= 100 ? 34 : 42} fontWeight="700" style={{ fontFamily: MONO }}>{nota == null ? "—" : nota}</text>
+                    <text x="80" y="78" textAnchor="middle" dominantBaseline="central" fill={notaCor} fontSize={notaFonte} fontWeight="700" style={{ fontFamily: MONO }}>{notaTxt}</text>
                     <text x="80" y="106" textAnchor="middle" fill="#6B6E76" fontSize="12">{notaLabel}</text>
                   </svg>
                   <p style={{ fontSize: 11, color: "#8A8D96", margin: "8px 0 0" }}>Referente ao período ({periodo.label})</p>

@@ -66,8 +66,12 @@ export class PerformanceService {
         ROUND(COALESCE(SUM(GREATEST(km_rodado, 0)), 0)::numeric, 1)           AS km,
         ROUND(COALESCE(AVG(velocidade) FILTER (WHERE velocidade > 0), 0)::numeric, 1) AS avg_speed,
         COALESCE(MAX(velocidade), 0)                                          AS max_speed,
+        -- Ignição em 3 estados MUTUAMENTE EXCLUSIVOS e exaustivos (mov + ocioso +
+        -- desligada = tempo total). Movimento: ligada e velocidade > 0. Ocioso:
+        -- ligada e NÃO em movimento (velocidade 0/nula) — cobre também leituras
+        -- sem velocidade, sem perder tempo nem contar em dobro. Desligada: resto.
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND velocidade > 0), 0) / 60.0)::int AS mov_min,
-        ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND (velocidade = 0 OR is_motor_ocioso IS TRUE)), 0) / 60.0)::int AS idle_min,
+        ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND (velocidade IS NULL OR velocidade <= 0)), 0) / 60.0)::int AS idle_min,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS NOT TRUE), 0) / 60.0)::int AS off_min,
         COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL
                          AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_total,
