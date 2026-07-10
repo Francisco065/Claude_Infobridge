@@ -39,6 +39,18 @@ export class PerformanceController {
     return this.perf.notaMes(tenantId, placa, mes, empresaId);
   }
 
+  @Get('resumo')
+  @ApiOperation({ summary: 'Resumo oficial do período (mesma fonte da Info Análise: indicador_periodo)' })
+  resumo(
+    @TenantId() tenantId: string,
+    @Query('de') de: string,
+    @Query('ate') ate: string,
+    @Query('placa') placa: string | undefined,
+    @EmpresaScope() empresaId?: string,
+  ) {
+    return this.perf.resumoIndicador(tenantId, de, ate, placa || undefined, empresaId);
+  }
+
   @Get('rota')
   @ApiOperation({ summary: 'Rota + eventos de um veículo no período (para o mapa)' })
   rota(

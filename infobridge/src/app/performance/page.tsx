@@ -24,6 +24,11 @@ type Dia = {
 };
 type Evento = { type: "start" | "end" | "stop" | "speed" | "brake"; idx: number; label: string; time: string };
 type Rota = { pontos: [number, number][]; eventos: Evento[] };
+type Resumo = {
+  registros: number; km: number; consumo: number | null; mediaKmL: number | null;
+  velMedia: number; velMax: number; frenagens: number; frenagensAlta: number;
+  frenagensBruscas: number; percOcioso: number; tempoMovS: number; tempoParadoS: number;
+};
 
 const EVENTO_ICONE: Record<string, { icon: string; bg: string; cor: string }> = {
   start: { icon: "ti-flag-3", bg: "#E7F6EC", cor: "#16A34A" },
@@ -111,6 +116,7 @@ export default function PerformancePage() {
   const [mapEventsOn, setMapEventsOn] = useState({ start: true, end: true, stop: true, speed: true, brake: true });
   const [rotas, setRotas] = useState<Record<string, Rota>>({});
   const [notaReal, setNotaReal] = useState<number | null>(null);
+  const [resumo, setResumo] = useState<Resumo | null>(null);
 
   const leafletPronto = useLeaflet();
   const mapDivRef = useRef<HTMLDivElement | null>(null);
@@ -206,25 +212,41 @@ export default function PerformancePage() {
       }
       return { date, km: +km.toFixed(1), fuelRaw: temFuel ? +fuel.toFixed(1) : null, temFuel, ignMovingMin: movMin, ignIdleMin: idleMin, ignOffMin: offMin, brakesTotal: brakesT, brakesHigh: brakesH, avgSpeed: velCount ? +(velSum / velCount).toFixed(1) : 0, maxSpeed: velMax };
     });
-    // Combustível é estimado por queda do nível do tanque — que só aparece em
-    // alguns dias (leitura esparsa). Para todos os dias com rodagem exibirem um
-    // valor coerente, distribuímos o total estimado do período proporcionalmente
-    // ao km rodado de cada dia (o somatório permanece igual ao total real).
-    const totalFuel = base.reduce((s, d) => s + (d.fuelRaw ?? 0), 0);
+    // Combustível: a fonte OFICIAL é o indicador mensal (mesma da Info Análise).
+    // O total do período (resumo.consumo) é distribuído por dia proporcionalmente
+    // ao km rodado — assim o somatório dos dias bate exatamente com a Info Análise
+    // e todos os dias com rodagem exibem valor. Sem resumo, cai para a estimativa
+    // por queda de nível calculada na telemetria.
+    const totalTelemetria = base.reduce((s, d) => s + (d.fuelRaw ?? 0), 0);
+    const totalOficial = resumo?.consumo ?? null;
+    const totalFuel = totalOficial != null ? totalOficial : totalTelemetria;
     const totalKm = base.reduce((s, d) => s + d.km, 0);
-    const algumFuel = base.some((d) => d.temFuel);
+    const temFuelPeriodo = totalOficial != null || base.some((d) => d.temFuel);
     return base.map((d) => ({
       ...d,
-      fuelL: !algumFuel
-        ? null
+      fuelL: !temFuelPeriodo || totalFuel <= 0
+        ? (temFuelPeriodo ? 0 : null)
         : totalKm > 0
           ? +((totalFuel * d.km) / totalKm).toFixed(1)
           : (d.fuelRaw ?? 0),
     }));
-  }, [dias, placasEscopo, diario]);
+  }, [dias, placasEscopo, diario, resumo]);
 
-  // KPIs agregados
+  // KPIs agregados — quando há indicador oficial (Info Análise), usa-o como
+  // fonte da verdade para km, combustível, média km/L, velocidades e frenagens;
+  // caso contrário cai para os valores derivados da telemetria diária.
   const kpi = useMemo(() => {
+    if (resumo && resumo.registros > 0) {
+      return {
+        km: Math.round(resumo.km),
+        fuel: resumo.consumo != null ? +resumo.consumo.toFixed(1) : 0,
+        consumo: resumo.mediaKmL ?? 0,
+        velMedia: +resumo.velMedia.toFixed(1),
+        velMax: Math.round(resumo.velMax),
+        brakes: resumo.frenagens,
+        brakesHigh: resumo.frenagensAlta,
+      };
+    }
     const km = porDia.reduce((s, d) => s + d.km, 0);
     const fuel = porDia.reduce((s, d) => s + (d.fuelL ?? 0), 0);
     const avg = porDia.filter((d) => d.avgSpeed > 0);
@@ -235,7 +257,7 @@ export default function PerformancePage() {
       brakes: porDia.reduce((s, d) => s + d.brakesTotal, 0),
       brakesHigh: porDia.reduce((s, d) => s + d.brakesHigh, 0),
     };
-  }, [porDia]);
+  }, [porDia, resumo]);
 
   // ── Rotas para o mapa ───────────────────────────────────────
   const placasMapa = viewMode === "veiculo" ? (selectedPlate ? [selectedPlate] : []) : mapSelectedPlates;
@@ -265,6 +287,15 @@ export default function PerformancePage() {
     apiFetch<{ nota: number | null }>(`/performance/nota?placa=${encodeURIComponent(selectedPlate)}&mes=${mesNota}`, token)
       .then((r) => setNotaReal(r?.nota ?? null)).catch(() => setNotaReal(null));
   }, [token, viewMode, selectedPlate, mesNota]);
+
+  // Resumo OFICIAL do período (mesma fonte da Info Análise: indicador_periodo).
+  // No modo veículo filtra pela placa; no modo frota soma todos os veículos.
+  useEffect(() => {
+    if (!token || !podeAcessar("info-analise")) { setResumo(null); return; }
+    const placaQ = viewMode === "veiculo" && selectedPlate ? `&placa=${encodeURIComponent(selectedPlate)}` : "";
+    apiFetch<Resumo>(`/performance/resumo?de=${periodo.de}&ate=${periodo.ate}${placaQ}`, token)
+      .then((r) => setResumo(r ?? null)).catch(() => setResumo(null));
+  }, [token, periodo.de, periodo.ate, viewMode, selectedPlate]);
 
   const corDe = (placa: string) => veiculos.find((v) => v.placa === placa)?.cor ?? VINHO;
 

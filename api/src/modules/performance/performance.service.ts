@@ -63,15 +63,15 @@ export class PerformanceService {
         WINDOW w AS (PARTITION BY lt.veiculo_id ORDER BY lt.ts)
       )
       SELECT placa, dia::text AS dia,
-        ROUND(COALESCE(SUM(km_rodado), 0)::numeric, 1)                        AS km,
+        ROUND(COALESCE(SUM(GREATEST(km_rodado, 0)), 0)::numeric, 1)           AS km,
         ROUND(COALESCE(AVG(velocidade) FILTER (WHERE velocidade > 0), 0)::numeric, 1) AS avg_speed,
         COALESCE(MAX(velocidade), 0)                                          AS max_speed,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND velocidade > 0), 0) / 60.0)::int AS mov_min,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS TRUE AND (velocidade = 0 OR is_motor_ocioso IS TRUE)), 0) / 60.0)::int AS idle_min,
         ROUND(COALESCE(SUM(dt) FILTER (WHERE ignicao IS NOT TRUE), 0) / 60.0)::int AS off_min,
-        COUNT(*) FILTER (WHERE dt > 0 AND vel_ant IS NOT NULL
+        COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL
                          AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_total,
-        COUNT(*) FILTER (WHERE dt > 0 AND vel_ant IS NOT NULL AND vel_ant > 70
+        COUNT(*) FILTER (WHERE dt > 0 AND dt <= 60 AND vel_ant IS NOT NULL AND vel_ant > 70
                          AND (vel_ant - velocidade) / 3.6 / dt >= 2.0)        AS brakes_high,
         CASE WHEN MAX(capacidade_tanque_l) IS NULL THEN NULL
              ELSE ROUND((SUM(GREATEST(COALESCE(nivel_ant, nivel_combustivel_pct) - nivel_combustivel_pct, 0))
@@ -117,6 +117,58 @@ export class PerformanceService {
     );
     const r = rows[0];
     return { nota: r ? Number(r.nota) : null, motorista: r?.motorista ?? null };
+  }
+
+  /**
+   * Resumo OFICIAL do período — lê os indicadores mensais já calculados pelo
+   * worker (a MESMA fonte da Info Análise), garantindo que km, combustível,
+   * média km/L, velocidades, frenagens e ocioso batam exatamente. Considera
+   * todos os meses que o período [de, ate] toca. placa opcional (veículo único).
+   */
+  async resumoIndicador(tenantId: string, de: string, ate: string, placa?: string, empresaId?: string) {
+    const rows = await this.db.query(
+      `
+      SELECT
+        COALESCE(SUM(ip.km_total), 0)                                         AS km,
+        SUM(ip.consumo_total_litros)                                          AS consumo,
+        COALESCE(MAX(ip.velocidade_max_kmh), 0)                               AS vel_max,
+        AVG(ip.velocidade_media_kmh) FILTER (WHERE ip.velocidade_media_kmh > 0) AS vel_media,
+        COALESCE(SUM(ip.frenagens_totais), 0)                                 AS frenagens,
+        COALESCE(SUM(ip.frenagens_alta_velocidade), 0)                        AS frenagens_alta,
+        COALESCE(SUM(ip.frenagens_bruscas), 0)                                AS frenagens_bruscas,
+        AVG(ip.perc_motor_ocioso)                                             AS perc_ocioso,
+        COALESCE(SUM(ip.tempo_movimento_s), 0)                                AS tempo_mov,
+        COALESCE(SUM(ip.tempo_parado_s), 0)                                   AS tempo_parado,
+        COUNT(*)                                                              AS registros
+      FROM   indicador_periodo ip
+      JOIN   veiculos v ON v.id = ip.veiculo_id
+      WHERE  ip.tenant_id = $1 AND v.ativo = true
+        AND  ip.tipo_periodo = 'mensal'
+        AND  ip.periodo_inicio >= date_trunc('month', $2::date)::date
+        AND  ip.periodo_inicio <= date_trunc('month', $3::date)::date
+        AND  ($4::text IS NULL OR v.placa = $4)
+        AND  ($5::uuid IS NULL OR v.empresa_id = $5::uuid)
+      `,
+      [tenantId, de, ate, placa ?? null, empresaId ?? null],
+    );
+    const r = rows[0] ?? {};
+    const num = (x: any) => (x === null || x === undefined ? null : Number(x));
+    const km = Number(r.km ?? 0);
+    const consumo = num(r.consumo);
+    return {
+      registros: Number(r.registros ?? 0),
+      km,
+      consumo,
+      mediaKmL: consumo && consumo > 0 ? +(km / consumo).toFixed(2) : null,
+      velMedia: num(r.vel_media) ?? 0,
+      velMax: num(r.vel_max) ?? 0,
+      frenagens: Number(r.frenagens ?? 0),
+      frenagensAlta: Number(r.frenagens_alta ?? 0),
+      frenagensBruscas: Number(r.frenagens_bruscas ?? 0),
+      percOcioso: num(r.perc_ocioso) ?? 0,
+      tempoMovS: Number(r.tempo_mov ?? 0),
+      tempoParadoS: Number(r.tempo_parado ?? 0),
+    };
   }
 
   /** Rota (pontos GPS) + eventos de um veículo no período, para o mapa. */
