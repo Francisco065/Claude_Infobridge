@@ -93,26 +93,41 @@ export class PerformanceService {
         ) s
         GROUP BY placa, dia
       ),
-      -- Delta de odômetro por dia, com LAG que PULA leituras sem odômetro
-      -- (LAG cru contra NULL zerava o km do dia quando o odômetro vinha
-      -- esparso). Saneamento igual ao worker: 0 < Δ ≤ 30 km por posição.
-      odo AS (
+      -- Distância geodésica (haversine) por dia — MESMA base e filtros do
+      -- worker: <30m é ruído de GPS parado, >30km ou >220km/h é salto de GPS.
+      -- Fallback para leituras que o recálculo horário ainda não alcançou.
+      -- (O odômetro id 10 oscila com outliers e acumulava km fantasmas.)
+      geo AS (
         SELECT placa, dia,
-               SUM(CASE WHEN odometro_km - odo_ant > 0 AND odometro_km - odo_ant <= 30
-                        THEN odometro_km - odo_ant ELSE 0 END) AS km_odo
+               SUM(CASE WHEN d_km >= 0.03 AND d_km <= 30 AND dt > 0
+                         AND d_km / (dt / 3600.0) <= 220
+                        THEN d_km ELSE 0 END) AS km_geo
         FROM (
-          SELECT v.placa,
-                 (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
-                 lt.odometro_km,
-                 LAG(lt.odometro_km) OVER (PARTITION BY lt.veiculo_id ORDER BY lt.ts) AS odo_ant
-          FROM   leitura_telemetria lt
-          JOIN   veiculos v ON v.id = lt.veiculo_id
-          WHERE  lt.tenant_id = $1
-            AND  lt.ts >= ($2::date AT TIME ZONE 'America/Sao_Paulo')
-            AND  lt.ts <  (($3::date + 1) AT TIME ZONE 'America/Sao_Paulo')
-            AND  lt.odometro_km IS NOT NULL
-            AND  v.ativo = true
-            AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+          SELECT placa, dia, dt,
+                 CASE WHEN lat_a IS NULL THEN 0
+                      ELSE 2 * 6371.0 * asin(least(1.0, sqrt(
+                             power(sin(radians(lat - lat_a) / 2), 2) +
+                             cos(radians(lat_a)) * cos(radians(lat)) *
+                             power(sin(radians(lng - lng_a) / 2), 2)
+                           )))
+                 END AS d_km
+          FROM (
+            SELECT v.placa,
+                   (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                   lt.latitude::float8  AS lat, lt.longitude::float8 AS lng,
+                   LAG(lt.latitude::float8)  OVER w AS lat_a,
+                   LAG(lt.longitude::float8) OVER w AS lng_a,
+                   EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)) AS dt
+            FROM   leitura_telemetria lt
+            JOIN   veiculos v ON v.id = lt.veiculo_id
+            WHERE  lt.tenant_id = $1
+              AND  lt.ts >= ($2::date AT TIME ZONE 'America/Sao_Paulo')
+              AND  lt.ts <  (($3::date + 1) AT TIME ZONE 'America/Sao_Paulo')
+              AND  lt.latitude IS NOT NULL AND lt.longitude IS NOT NULL
+              AND  v.ativo = true
+              AND  ($4::uuid IS NULL OR v.empresa_id = $4::uuid)
+            WINDOW w AS (PARTITION BY lt.veiculo_id ORDER BY lt.ts)
+          ) coords
         ) s
         GROUP BY placa, dia
       ),
@@ -146,11 +161,11 @@ export class PerformanceService {
       GROUP BY placa, dia
       )
       SELECT a.placa, a.dia::text AS dia,
-             -- Cadeia de fontes do km: worker → delta de odômetro → velocidade×tempo.
-             -- Garante km em todo dia com movimento, mesmo com o recálculo do
-             -- worker atrasado ou odômetro ausente nas leituras novas.
+             -- Cadeia de fontes do km: worker (haversine) → haversine ao vivo
+             -- → velocidade×tempo. Garante km em todo dia com movimento,
+             -- mesmo com o recálculo do worker atrasado.
              CASE WHEN a.km_worker > 0 THEN a.km_worker
-                  WHEN COALESCE(o.km_odo, 0) > 0 THEN ROUND(o.km_odo::numeric, 1)
+                  WHEN COALESCE(g.km_geo, 0) > 0 THEN ROUND(g.km_geo::numeric, 1)
                   ELSE a.km_vel END                                           AS km,
              a.avg_speed, a.max_speed, a.mov_min, a.idle_min, a.off_min,
              a.brakes_total, a.brakes_high,
@@ -158,7 +173,7 @@ export class PerformanceService {
                   ELSE ROUND((n.queda_pct * n.cap / 100.0)::numeric, 1) END   AS fuel_l
       FROM   agg a
       LEFT JOIN niv n ON n.placa = a.placa AND n.dia = a.dia
-      LEFT JOIN odo o ON o.placa = a.placa AND o.dia = a.dia
+      LEFT JOIN geo g ON g.placa = a.placa AND g.dia = a.dia
       ORDER BY a.placa, a.dia
       `,
       [tenantId, de, ate, empresaId ?? null],

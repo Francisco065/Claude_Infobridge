@@ -248,25 +248,50 @@ async def _polling_todos() -> dict:
 
 async def _atualizar_km_rodado(db, inicio: datetime):
     """
-    Grava km_rodado em cada leitura do período: diferença do odômetro em relação
-    à posição ANTERIOR do mesmo veículo (LAG por ts), saneada — 0 < d ≤ 30 km;
-    saltos negativos (reset) e gigantes (oscilação de escala do GPS) viram 0.
-    Assim o km fica auditável linha a linha e km_total = SUM(km_rodado).
-    A janela inclui 2 dias antes do início para a 1ª posição do mês ter referência.
+    Grava km_rodado por leitura como a DISTÂNCIA GEODÉSICA (haversine) até a
+    posição anterior do mesmo veículo — a mesma base da rodagem que a
+    tecnologia (Multiportal) apresenta. O método anterior somava deltas do
+    ODÔMETRO (componente GPS id 10), que oscila com outliers: cada oscilação
+    positiva virava "km rodado" (efeito catraca) e dias PARADOS acumulavam
+    dezenas de km fantasmas, divergindo do km/dia real.
+
+    Saneamento por intervalo:
+      • distância < 30 m           → 0 (ruído de GPS com veículo parado)
+      • distância > 30 km          → 0 (salto de GPS)
+      • velocidade média > 220 km/h→ 0 (salto de GPS)
+    A janela inclui 2 dias antes do início para a 1ª posição ter referência.
     """
     await db.execute(
         """
-        WITH d AS (
+        WITH pos AS (
           SELECT tenant_id, veiculo_id, ts,
-                 odometro_km - LAG(odometro_km) OVER (
-                     PARTITION BY tenant_id, veiculo_id ORDER BY ts
-                 ) AS delta
+                 latitude::float8  AS lat,
+                 longitude::float8 AS lng,
+                 LAG(latitude::float8)  OVER w AS lat_a,
+                 LAG(longitude::float8) OVER w AS lng_a,
+                 EXTRACT(EPOCH FROM (ts - LAG(ts) OVER w)) AS dt
           FROM   leitura_telemetria
           WHERE  ts >= $1::timestamptz - INTERVAL '2 days'
+            AND  latitude IS NOT NULL AND longitude IS NOT NULL
+          WINDOW w AS (PARTITION BY tenant_id, veiculo_id ORDER BY ts)
+        ),
+        dist AS (
+          SELECT tenant_id, veiculo_id, ts, dt,
+                 CASE WHEN lat_a IS NULL THEN 0
+                      ELSE 2 * 6371.0 * asin(least(1.0, sqrt(
+                             power(sin(radians(lat - lat_a) / 2), 2) +
+                             cos(radians(lat_a)) * cos(radians(lat)) *
+                             power(sin(radians(lng - lng_a) / 2), 2)
+                           )))
+                 END AS d_km
+          FROM   pos
         )
         UPDATE leitura_telemetria lt
-        SET    km_rodado = CASE WHEN d.delta > 0 AND d.delta <= 30 THEN d.delta ELSE 0 END
-        FROM   d
+        SET    km_rodado = CASE
+                 WHEN d.d_km >= 0.03 AND d.d_km <= 30
+                  AND d.dt > 0 AND d.d_km / (d.dt / 3600.0) <= 220
+                 THEN d.d_km ELSE 0 END
+        FROM   dist d
         WHERE  lt.tenant_id = d.tenant_id
           AND  lt.veiculo_id = d.veiculo_id
           AND  lt.ts = d.ts
@@ -274,25 +299,37 @@ async def _atualizar_km_rodado(db, inicio: datetime):
         """,
         inicio,
     )
+    # Leituras sem coordenada não têm distância — zera para não sobrar km
+    # antigo (base odômetro) somando junto com o novo método.
+    await db.execute(
+        """
+        UPDATE leitura_telemetria
+        SET    km_rodado = 0
+        WHERE  ts >= $1::timestamptz
+          AND  (latitude IS NULL OR longitude IS NULL)
+          AND  COALESCE(km_rodado, 0) <> 0
+        """,
+        inicio,
+    )
 
 
-# ── Recálculo de indicadores do mês atual ─────────────────────
+# ── Recálculo de indicadores de um mês ────────────────────────
 
-async def _recalcular_mes_atual():
-    """Recalcula indicadores do mês corrente para todos os pares com telemetria."""
+async def _recalcular_mes(ano: int, mes: int) -> int:
+    """Recalcula km_rodado + indicadores + notas de um mês (corrente ou
+    fechado) para todos os pares com telemetria nele. Retorna nº de pares."""
     import calendar
-    hoje = date.today()
-    inicio = hoje.replace(day=1)
-    # Período mensal ESTÁVEL (fim = último dia do mês). Assim o recálculo diário
-    # atualiza a MESMA linha (ON CONFLICT) em vez de criar uma nova por dia —
-    # evita o acúmulo de períodos quase duplicados no filtro.
-    ultimo_dia = calendar.monthrange(hoje.year, hoje.month)[1]
-    fim = hoje.replace(day=ultimo_dia)
+    inicio = date(ano, mes, 1)
+    # Período mensal ESTÁVEL (fim = último dia do mês). Assim o recálculo
+    # atualiza a MESMA linha (ON CONFLICT) em vez de criar uma nova por dia.
+    fim = date(ano, mes, calendar.monthrange(ano, mes)[1])
+    ini_dt = datetime(ano, mes, 1)
+    fim_dt = datetime(ano, mes, fim.day, 23, 59, 59)
 
     db = await asyncpg.connect(cfg.database_url)
     try:
         # Atualiza o km_rodado por linha ANTES de agregar os indicadores.
-        await _atualizar_km_rodado(db, datetime(inicio.year, inicio.month, inicio.day))
+        await _atualizar_km_rodado(db, ini_dt)
         pares = await db.fetch(
             """
             SELECT DISTINCT
@@ -300,9 +337,9 @@ async def _recalcular_mes_atual():
                 lt.motorista_id::text AS motorista_id,
                 lt.veiculo_id::text  AS veiculo_id
             FROM  leitura_telemetria lt
-            WHERE lt.ts >= $1 AND lt.motorista_id IS NOT NULL
+            WHERE lt.ts >= $1 AND lt.ts <= $2 AND lt.motorista_id IS NOT NULL
             """,
-            datetime(inicio.year, inicio.month, inicio.day),
+            ini_dt, fim_dt,
         )
     finally:
         await db.close()
@@ -322,7 +359,14 @@ async def _recalcular_mes_atual():
         except Exception as e:
             log.error('recalculo.par_erro', error=str(e),
                       motorista=par['motorista_id'])
-    log.info('recalculo.concluido', pares=len(pares))
+    log.info('recalculo.concluido', ano=ano, mes=mes, pares=len(pares))
+    return len(pares)
+
+
+async def _recalcular_mes_atual():
+    """Recalcula indicadores do mês corrente para todos os pares com telemetria."""
+    hoje = date.today()
+    await _recalcular_mes(hoje.year, hoje.month)
 
 
 # ── Loop principal ────────────────────────────────────────────
@@ -493,6 +537,80 @@ async def calcular_indicadores(req: IndicadoresRequest):
         date.fromisoformat(req.periodo_fim),
     )
     return {'status': 'ok', 'mensagem': 'Indicadores calculados'}
+
+
+@api.post('/jobs/recalcular-mes')
+async def recalcular_mes_manual(mes: str):
+    """Reprocessa um mês inteiro (mes=YYYY-MM): recalcula km_rodado com a base
+    geodésica atual e refaz indicadores + notas. Use para meses FECHADOS após
+    mudanças de método (o mês corrente já é reprocessado a cada hora)."""
+    import re as _re
+    if not _re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', mes or ''):
+        return {'status': 'erro', 'mensagem': 'Parâmetro mes deve ser YYYY-MM'}
+    ano, m = int(mes[:4]), int(mes[5:7])
+    pares = await _recalcular_mes(ano, m)
+    return {'status': 'ok', 'mes': mes, 'pares_recalculados': pares}
+
+
+@api.get('/debug/km')
+async def debug_km(placa: str = 'QOD5557'):
+    """Compara o km por dia (BRT) do mês por 4 métodos: o que está gravado no
+    sistema (km_rodado), distância GPS entre posições (haversine, com filtros
+    de ruído), delta de odômetro saneado e velocidade×tempo. Cole ao lado a
+    tabela da Multiportal para ver qual método bate com a tecnologia."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        rows = await db.fetch(
+            """
+            WITH p AS (
+              SELECT (lt.ts AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                     lt.km_rodado, lt.velocidade, lt.odometro_km,
+                     lt.latitude::float8  AS lat, lt.longitude::float8 AS lng,
+                     LAG(lt.latitude::float8)  OVER w AS lat_a,
+                     LAG(lt.longitude::float8) OVER w AS lng_a,
+                     LAG(lt.odometro_km)        OVER w AS odo_a,
+                     EXTRACT(EPOCH FROM (lt.ts - LAG(lt.ts) OVER w)) AS dt
+              FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+              WHERE  v.placa = $1 AND lt.ts >= $2
+              WINDOW w AS (ORDER BY lt.ts)
+            ),
+            d AS (
+              SELECT dia, km_rodado, velocidade, dt,
+                     CASE WHEN odometro_km - odo_a > 0 AND odometro_km - odo_a <= 30
+                          THEN odometro_km - odo_a ELSE 0 END AS d_odo,
+                     CASE WHEN lat IS NULL OR lat_a IS NULL THEN 0
+                          ELSE 2 * 6371.0 * asin(least(1.0, sqrt(
+                                 power(sin(radians(lat - lat_a) / 2), 2) +
+                                 cos(radians(lat_a)) * cos(radians(lat)) *
+                                 power(sin(radians(lng - lng_a) / 2), 2)
+                               )))
+                     END AS d_km
+              FROM p
+            )
+            SELECT dia::text AS dia,
+              ROUND(COALESCE(SUM(GREATEST(km_rodado, 0)), 0)::numeric, 1)  AS km_sistema,
+              ROUND(SUM(CASE WHEN d_km >= 0.03 AND d_km <= 30 AND dt > 0
+                              AND d_km / (dt / 3600.0) <= 220
+                             THEN d_km ELSE 0 END)::numeric, 1)            AS km_gps,
+              ROUND(COALESCE(SUM(d_odo), 0)::numeric, 1)                   AS km_odometro,
+              ROUND(COALESCE(SUM(velocidade * dt / 3600.0)
+                    FILTER (WHERE velocidade > 0 AND dt > 0 AND dt <= 600), 0)::numeric, 1) AS km_velocidade
+            FROM d GROUP BY dia ORDER BY dia
+            """,
+            placa, inicio,
+        )
+    finally:
+        await db.close()
+    dias = [dict(r) for r in rows]
+    tot = lambda k: round(sum(float(d[k]) for d in dias), 1)  # noqa: E731
+    return {
+        'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+        'nota': 'km_gps é o método novo (haversine com filtros); km_sistema é o gravado hoje — após o próximo recálculo os dois convergem',
+        'totais': {k: tot(k) for k in ('km_sistema', 'km_gps', 'km_odometro', 'km_velocidade')},
+        'dias': dias,
+    }
 
 
 @api.post('/jobs/polling')
