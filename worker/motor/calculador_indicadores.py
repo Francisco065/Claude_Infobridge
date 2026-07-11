@@ -375,15 +375,32 @@ def _detectar_frenagens(df: pd.DataFrame, km_total: float) -> dict:
 
 def _motor_ocioso(df: pd.DataFrame, tempo_total_s: float) -> dict:
     TOLERANCIA = cfg.motor_ocioso_tolerancia_s  # 300s = 5 min
+    # Evidência de motor girando: dongles OBD2 detectam "ignição" por chave/
+    # tensão e marcam ignicao=true com o motor DESLIGADO (almoço/pernoite com
+    # chave ligada) — isso inflava o ocioso em dezenas de horas. Quando o motor
+    # realmente gira, o RPM aparece em parte das leituras; um episódio longo
+    # (≥ MIN_LEITURAS_EVIDENCIA) sem NENHUM RPM > 0 é, com altíssima
+    # probabilidade, motor desligado. Só se aplica a veículos que enviam RPM
+    # no período (sem fonte de RPM não há como inferir).
+    MIN_LEITURAS_EVIDENCIA = 10
 
     df_ocioso = df[df['is_motor_ocioso'] == True].copy()
     if df_ocioso.empty:
         return {'perc_motor_ocioso': 0.0, 'tempo_motor_ocioso_penalizado_s': 0}
 
+    rpm_serie = pd.to_numeric(df['rpm'], errors='coerce').fillna(0)
+    veiculo_envia_rpm = bool((rpm_serie > 0).any())
+
     # Agrupar sequências contínuas de parada
     df_ocioso['grupo'] = (df_ocioso.index.to_series().diff() > 1).cumsum()
     tempo_penalizado = 0.0
     for _, grupo in df_ocioso.groupby('grupo'):
+        # Episódio longo, veículo envia RPM, e nenhuma leitura do episódio com
+        # RPM > 0 → motor desligado com chave/energia ligada; não penaliza.
+        if veiculo_envia_rpm and len(grupo) >= MIN_LEITURAS_EVIDENCIA:
+            rpm_grupo = pd.to_numeric(grupo['rpm'], errors='coerce').fillna(0)
+            if not (rpm_grupo > 0).any():
+                continue
         # O delta_t da 1ª linha da sequência é o intervalo desde a leitura ANTERIOR
         # (possivelmente em movimento) — não faz parte da parada. Somamos do 2º em diante.
         duracao = float(grupo['delta_t'].iloc[1:].sum())

@@ -973,6 +973,95 @@ async def debug_frenagens(placa: str = 'QOD5557'):
         await db.close()
 
 
+@api.get('/debug/ocioso')
+async def debug_ocioso(placa: str = 'QOD5557'):
+    """Diagnóstico do motor ocioso do mês: lista os episódios de parada com
+    ignição ligada (início/fim BRT, duração, nº de leituras, RPM presente?) e
+    compara o total penalizado ANTES e DEPOIS da regra de evidência de RPM —
+    mostra exatamente de onde vêm as horas contabilizadas."""
+    hoje = date.today()
+    inicio = datetime(hoje.year, hoje.month, 1)
+    brt = timezone(timedelta(hours=-3))
+    TOLERANCIA = cfg.motor_ocioso_tolerancia_s
+    MIN_LEITURAS_EVIDENCIA = 10
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        rows = await db.fetch(
+            """
+            SELECT lt.ts, lt.velocidade, lt.ignicao, lt.is_motor_ocioso, lt.rpm,
+                   lt.latitude, lt.longitude
+            FROM   leitura_telemetria lt JOIN veiculos v ON v.id = lt.veiculo_id
+            WHERE  v.placa = $1 AND lt.ts >= $2
+            ORDER  BY lt.ts
+            """,
+            placa, inicio,
+        )
+    finally:
+        await db.close()
+
+    if not rows:
+        return {'placa': placa, 'mes': hoje.strftime('%Y-%m'), 'mensagem': 'sem leituras no mês'}
+
+    veiculo_envia_rpm = any((r['rpm'] or 0) > 0 for r in rows)
+
+    # Reconstrói episódios exatamente como o calculador: sequências contínuas
+    # de is_motor_ocioso, delta_t limitado a 600s, 1ª leitura fora da duração.
+    episodios: list[dict] = []
+    atual: list[tuple] = []   # (ts, delta_t, rpm)
+    ant_ts = None
+    for r in rows:
+        dt = min((r['ts'] - ant_ts).total_seconds(), 600) if ant_ts else 0.0
+        ant_ts = r['ts']
+        if r['is_motor_ocioso'] is True:
+            atual.append((r['ts'], dt, r['rpm'], r['latitude'], r['longitude']))
+        else:
+            if atual:
+                episodios.append(_resumir_episodio(atual, TOLERANCIA, MIN_LEITURAS_EVIDENCIA, veiculo_envia_rpm, brt))
+                atual = []
+    if atual:
+        episodios.append(_resumir_episodio(atual, TOLERANCIA, MIN_LEITURAS_EVIDENCIA, veiculo_envia_rpm, brt))
+
+    pen_antes  = sum(e['penalizado_s'] for e in episodios)
+    pen_depois = sum(e['penalizado_s'] for e in episodios if not e['descartado_por_rpm'])
+    episodios.sort(key=lambda e: e['duracao_s'], reverse=True)
+
+    def hm(s: float) -> str:
+        m = int(round(s / 60))
+        return f'{m // 60}h{m % 60:02d}'
+
+    return {
+        'placa': placa, 'mes': hoje.strftime('%Y-%m'),
+        'veiculo_envia_rpm': veiculo_envia_rpm,
+        'episodios_total': len(episodios),
+        'penalizado_regra_antiga': hm(pen_antes),
+        'penalizado_regra_nova':   hm(pen_depois),
+        'descartado_como_motor_desligado': hm(pen_antes - pen_depois),
+        'top_episodios': episodios[:40],
+    }
+
+
+def _resumir_episodio(leituras: list[tuple], tolerancia: int, min_evid: int,
+                      envia_rpm: bool, brt: timezone) -> dict:
+    duracao = sum(dt for _, dt, *_ in leituras[1:])
+    com_rpm = sum(1 for _, _, rpm, *_ in leituras if (rpm or 0) > 0)
+    descartado = envia_rpm and len(leituras) >= min_evid and com_rpm == 0
+    pen = max(0.0, duracao - tolerancia)
+    ini, fim = leituras[0][0], leituras[-1][0]
+    lat, lng = leituras[0][3], leituras[0][4]
+    return {
+        'inicio_brt': ini.astimezone(brt).strftime('%d/%m %H:%M'),
+        'fim_brt':    fim.astimezone(brt).strftime('%d/%m %H:%M'),
+        'duracao_s':  int(duracao),
+        'duracao':    f'{int(duracao // 3600)}h{int(duracao % 3600 // 60):02d}',
+        'leituras':   len(leituras),
+        'leituras_com_rpm': com_rpm,
+        'penalizado_s': int(pen),
+        'descartado_por_rpm': descartado,
+        'posicao': [float(lat), float(lng)] if lat is not None and lng is not None else None,
+    }
+
+
 @api.get('/debug/rpm')
 async def debug_rpm(placa: str = 'QOD5557'):
     """Distribuição de RPM do mês: cobertura, min/max/média, histograma por faixa
