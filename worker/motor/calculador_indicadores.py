@@ -382,8 +382,6 @@ def _motor_ocioso(df: pd.DataFrame, tempo_total_s: float) -> dict:
     # (≥ MIN_LEITURAS_EVIDENCIA) sem NENHUM RPM > 0 é, com altíssima
     # probabilidade, motor desligado. Só se aplica a veículos que enviam RPM
     # no período (sem fonte de RPM não há como inferir).
-    MIN_LEITURAS_EVIDENCIA = 10
-
     df_ocioso = df[df['is_motor_ocioso'] == True].copy()
     if df_ocioso.empty:
         return {'perc_motor_ocioso': 0.0, 'tempo_motor_ocioso_penalizado_s': 0}
@@ -391,13 +389,26 @@ def _motor_ocioso(df: pd.DataFrame, tempo_total_s: float) -> dict:
     rpm_serie = pd.to_numeric(df['rpm'], errors='coerce').fillna(0)
     veiculo_envia_rpm = bool((rpm_serie > 0).any())
 
+    # Limiar adaptativo: medimos a COBERTURA de RPM nas leituras em movimento
+    # (motor comprovadamente girando). Se o equipamento envia RPM em quase
+    # todas (≥80%, caso da frota atual: 100%), 3 leituras sem RPM já bastam
+    # como evidência de motor desligado; cobertura parcial exige 10.
+    min_evidencia = 10
+    if veiculo_envia_rpm:
+        vel_serie = pd.to_numeric(df['velocidade'], errors='coerce').fillna(0)
+        em_mov = df[vel_serie > 0]
+        if len(em_mov) >= 50:
+            cobertura = float((pd.to_numeric(em_mov['rpm'], errors='coerce').fillna(0) > 0).mean())
+            if cobertura >= 0.8:
+                min_evidencia = 3
+
     # Agrupar sequências contínuas de parada
     df_ocioso['grupo'] = (df_ocioso.index.to_series().diff() > 1).cumsum()
     tempo_penalizado = 0.0
     for _, grupo in df_ocioso.groupby('grupo'):
         # Episódio longo, veículo envia RPM, e nenhuma leitura do episódio com
         # RPM > 0 → motor desligado com chave/energia ligada; não penaliza.
-        if veiculo_envia_rpm and len(grupo) >= MIN_LEITURAS_EVIDENCIA:
+        if veiculo_envia_rpm and len(grupo) >= min_evidencia:
             rpm_grupo = pd.to_numeric(grupo['rpm'], errors='coerce').fillna(0)
             if not (rpm_grupo > 0).any():
                 continue

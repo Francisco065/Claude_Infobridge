@@ -983,7 +983,6 @@ async def debug_ocioso(placa: str = 'QOD5557'):
     inicio = datetime(hoje.year, hoje.month, 1)
     brt = timezone(timedelta(hours=-3))
     TOLERANCIA = cfg.motor_ocioso_tolerancia_s
-    MIN_LEITURAS_EVIDENCIA = 10
 
     db = await asyncpg.connect(cfg.database_url)
     try:
@@ -1004,6 +1003,12 @@ async def debug_ocioso(placa: str = 'QOD5557'):
         return {'placa': placa, 'mes': hoje.strftime('%Y-%m'), 'mensagem': 'sem leituras no mês'}
 
     veiculo_envia_rpm = any((r['rpm'] or 0) > 0 for r in rows)
+
+    # Mesmo limiar adaptativo do calculador: cobertura de RPM nas leituras em
+    # movimento ≥80% → 3 leituras bastam como evidência; senão, 10.
+    em_mov = [r for r in rows if (r['velocidade'] or 0) > 0]
+    cobertura_rpm = (sum(1 for r in em_mov if (r['rpm'] or 0) > 0) / len(em_mov)) if len(em_mov) >= 50 else 0.0
+    MIN_LEITURAS_EVIDENCIA = 3 if (veiculo_envia_rpm and cobertura_rpm >= 0.8) else 10
 
     # Reconstrói episódios exatamente como o calculador: sequências contínuas
     # de is_motor_ocioso, delta_t limitado a 600s, 1ª leitura fora da duração.
@@ -1033,6 +1038,8 @@ async def debug_ocioso(placa: str = 'QOD5557'):
     return {
         'placa': placa, 'mes': hoje.strftime('%Y-%m'),
         'veiculo_envia_rpm': veiculo_envia_rpm,
+        'cobertura_rpm_em_movimento': round(cobertura_rpm, 3),
+        'min_leituras_evidencia': MIN_LEITURAS_EVIDENCIA,
         'episodios_total': len(episodios),
         'penalizado_regra_antiga': hm(pen_antes),
         'penalizado_regra_nova':   hm(pen_depois),
