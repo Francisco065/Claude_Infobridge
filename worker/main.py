@@ -539,11 +539,13 @@ async def calcular_indicadores(req: IndicadoresRequest):
     return {'status': 'ok', 'mensagem': 'Indicadores calculados'}
 
 
+@api.get('/jobs/recalcular-mes')
 @api.post('/jobs/recalcular-mes')
 async def recalcular_mes_manual(mes: str):
     """Reprocessa um mês inteiro (mes=YYYY-MM): recalcula km_rodado com a base
     geodésica atual e refaz indicadores + notas. Use para meses FECHADOS após
-    mudanças de método (o mês corrente já é reprocessado a cada hora)."""
+    mudanças de método (o mês corrente já é reprocessado a cada hora).
+    Aceita GET para poder ser disparado direto do navegador."""
     import re as _re
     if not _re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', mes or ''):
         return {'status': 'erro', 'mensagem': 'Parâmetro mes deve ser YYYY-MM'}
