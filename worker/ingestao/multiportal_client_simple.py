@@ -69,5 +69,29 @@ class MultiportalClientSimple:
         data = await self._post('/integracao/dados_novos')
         return data.get('object', [])
 
+    async def veiculos(self) -> list[dict]:
+        """Frota cadastrada na Multiportal (traz o id usado em posicoes_veiculo)."""
+        data = await self._post('/veiculos')
+        return data.get('object', []) or []
+
+    async def posicoes_veiculo(self, id_multiportal: int,
+                               inicio_ms: int, fim_ms: int) -> list[dict]:
+        """Histórico de posições de UM veículo num intervalo fechado.
+
+        Diferente de /integracao/dados_novos — que é uma fila consumida na
+        leitura e só entrega o que ainda não foi lido — este endpoint aceita
+        intervalo de datas e pode ser reconsultado. É o que permite recuperar
+        períodos em que a ingestão esteve parada.
+
+        As datas vão em CABEÇALHO (não no corpo), em epoch MILISSEGUNDOS —
+        mesma unidade de `dataEquipamento` nas posições.
+        """
+        data = await self._post(
+            '/posicoes/veiculo',
+            {'id': id_multiportal},
+            {'dataInicial': str(int(inicio_ms)), 'dataFinal': str(int(fim_ms))},
+        )
+        return data.get('object', []) or []
+
     async def close(self) -> None:
         await self._http.aclose()

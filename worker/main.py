@@ -83,6 +83,54 @@ signal.signal(signal.SIGINT, _stop)
 
 # ── Polling de um tenant ──────────────────────────────────────
 
+async def _gravar_leituras(db: asyncpg.Connection, registros: list[dict]) -> None:
+    """Persiste leituras de telemetria já normalizadas por processar_posicao().
+
+    Usado tanto pelo polling ao vivo quanto pelo backfill histórico — ponto
+    ÚNICO de escrita para os dois não divergirem no conjunto de colunas.
+    ON CONFLICT DO NOTHING torna a operação idempotente: reprocessar o mesmo
+    período não duplica nem sobrescreve o que já está gravado.
+    """
+    if not registros:
+        return
+    await db.executemany(
+        """
+        INSERT INTO leitura_telemetria (
+            tenant_id, veiculo_id, motorista_id, ts, ts_gateway,
+            evento_id, latitude, longitude, altitude_m, proa,
+            hdop, satelites, gps_valido, endereco, velocidade,
+            rpm, perc_acelerador, odometro_km, consumo_total_l,
+            consumo_inst_l, ignicao, cruise_ctrl, pedal_freio,
+            embreagem, faixa_rpm, faixa_acelerador,
+            is_motor_ocioso, is_embalo, fonte_rpm, fonte_acelerador,
+            componentes_raw,
+            nivel_combustivel_pct, fonte_velocidade, fonte_combustivel
+        ) VALUES (
+            $1::uuid, $2::uuid, $3::uuid,
+            to_timestamp($4), to_timestamp($5),
+            $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+            $16, $17, $18, $19, $20, $21, $22, $23, $24,
+            $25, $26, $27, $28, $29, $30, $31::jsonb,
+            $32, $33, $34
+        ) ON CONFLICT (tenant_id, veiculo_id, ts) DO NOTHING
+        """,
+        [(
+            r['tenant_id'], r['veiculo_id'], r['motorista_id'],
+            r['ts'], r['ts_gateway'], r['evento_id'],
+            r['latitude'], r['longitude'], r['altitude_m'], r['proa'],
+            r['hdop'], r['satelites'], r['gps_valido'], r['endereco'],
+            r['velocidade'], r['rpm'], r['perc_acelerador'],
+            r['odometro_km'], r['consumo_total_l'], r['consumo_inst_l'],
+            r['ignicao'], r['cruise_ctrl'], r['pedal_freio'],
+            r['embreagem'], r['faixa_rpm'], r['faixa_acelerador'],
+            r['is_motor_ocioso'], r['is_embalo'],
+            r['fonte_rpm'], r['fonte_acelerador'],
+            r['componentes_raw'],
+            r['nivel_combustivel_pct'], r['fonte_velocidade'], r['fonte_combustivel'],
+        ) for r in registros],
+    )
+
+
 async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
     password = base64.b64decode(tenant['password_enc'].encode()).decode()
     client = MultiportalClientSimple(
@@ -179,42 +227,7 @@ async def _polling_tenant(tenant: dict, db: asyncpg.Connection) -> dict:
                     registros.append(r)
 
             if registros:
-                await db.executemany(
-                    """
-                    INSERT INTO leitura_telemetria (
-                        tenant_id, veiculo_id, motorista_id, ts, ts_gateway,
-                        evento_id, latitude, longitude, altitude_m, proa,
-                        hdop, satelites, gps_valido, endereco, velocidade,
-                        rpm, perc_acelerador, odometro_km, consumo_total_l,
-                        consumo_inst_l, ignicao, cruise_ctrl, pedal_freio,
-                        embreagem, faixa_rpm, faixa_acelerador,
-                        is_motor_ocioso, is_embalo, fonte_rpm, fonte_acelerador,
-                        componentes_raw,
-                        nivel_combustivel_pct, fonte_velocidade, fonte_combustivel
-                    ) VALUES (
-                        $1::uuid, $2::uuid, $3::uuid,
-                        to_timestamp($4), to_timestamp($5),
-                        $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                        $16, $17, $18, $19, $20, $21, $22, $23, $24,
-                        $25, $26, $27, $28, $29, $30, $31::jsonb,
-                        $32, $33, $34
-                    ) ON CONFLICT (tenant_id, veiculo_id, ts) DO NOTHING
-                    """,
-                    [(
-                        r['tenant_id'], r['veiculo_id'], r['motorista_id'],
-                        r['ts'], r['ts_gateway'], r['evento_id'],
-                        r['latitude'], r['longitude'], r['altitude_m'], r['proa'],
-                        r['hdop'], r['satelites'], r['gps_valido'], r['endereco'],
-                        r['velocidade'], r['rpm'], r['perc_acelerador'],
-                        r['odometro_km'], r['consumo_total_l'], r['consumo_inst_l'],
-                        r['ignicao'], r['cruise_ctrl'], r['pedal_freio'],
-                        r['embreagem'], r['faixa_rpm'], r['faixa_acelerador'],
-                        r['is_motor_ocioso'], r['is_embalo'],
-                        r['fonte_rpm'], r['fonte_acelerador'],
-                        r['componentes_raw'],
-                        r['nivel_combustivel_pct'], r['fonte_velocidade'], r['fonte_combustivel'],
-                    ) for r in registros],
-                )
+                await _gravar_leituras(db, registros)
                 total += len(registros)
     return {'veiculos': len(veiculos), 'posicoes': total}
 
@@ -369,6 +382,160 @@ async def _recalcular_mes_atual():
     """Recalcula indicadores do mês corrente para todos os pares com telemetria."""
     hoje = date.today()
     await _recalcular_mes(hoje.year, hoje.month)
+
+
+# ── Backfill histórico (recuperar períodos sem ingestão) ──────
+
+def _extrair_posicoes(obj: Any) -> list[dict]:
+    """Normaliza a resposta de /posicoes/veiculo numa lista plana de posições.
+
+    A forma exata do retorno NÃO pôde ser validada contra a API real (sem
+    acesso de rede no ambiente de desenvolvimento), então aceitamos as duas
+    formas plausíveis: lista de posições direta, ou a mesma estrutura
+    aninhada de /integracao/dados_novos (veículo → dispositivos → posições).
+    Uma posição é reconhecida por ter 'dataEquipamento'.
+    """
+    if not obj:
+        return []
+    if isinstance(obj, dict):
+        obj = [obj]
+    posicoes: list[dict] = []
+    for item in obj:
+        if not isinstance(item, dict):
+            continue
+        if 'dataEquipamento' in item:
+            posicoes.append(item)
+            continue
+        for disp in item.get('dispositivos', []) or []:
+            for pos in disp.get('posicoes', []) or []:
+                if isinstance(pos, dict) and 'dataEquipamento' in pos:
+                    posicoes.append(pos)
+        for pos in item.get('posicoes', []) or []:
+            if isinstance(pos, dict) and 'dataEquipamento' in pos:
+                posicoes.append(pos)
+    return posicoes
+
+
+async def _backfill(de: date, ate: date, placa: str | None = None,
+                    dry: bool = False) -> dict:
+    """Reingere telemetria histórica de [de, ate] a partir de /posicoes/veiculo.
+
+    Consulta dia a dia (limita o tamanho de cada resposta), reaproveita o
+    mesmo processar_posicao() do polling e grava pelo mesmo caminho —
+    ON CONFLICT DO NOTHING, então rodar duas vezes não duplica nada.
+    Com dry=True nada é gravado: só relata o que a Multiportal devolveu,
+    para conferir o período antes de escrever no banco.
+    """
+    brt = timezone(timedelta(hours=-3))
+    resumo: dict = {
+        'periodo': f'{de.isoformat()} a {ate.isoformat()}',
+        'dry_run': dry, 'veiculos': [], 'posicoes_recebidas': 0, 'leituras_gravadas': 0,
+    }
+
+    db = await asyncpg.connect(cfg.database_url)
+    try:
+        tenants = await db.fetch(
+            """
+            SELECT t.id::text AS tenant_id, ci.username, ci.password_enc, ci.appid
+            FROM   tenants t
+            JOIN   credencial_integracao ci ON ci.tenant_id = t.id
+            WHERE  t.ativo = true AND ci.ativo = true
+            """
+        )
+        for t in tenants:
+            veics = await db.fetch(
+                """
+                SELECT id::text AS veiculo_id, id_multiportal, placa
+                FROM   veiculos
+                WHERE  tenant_id = $1::uuid AND ativo = true
+                  AND  id_multiportal IS NOT NULL
+                  AND  ($2::text IS NULL OR placa = $2)
+                ORDER  BY placa
+                """,
+                t['tenant_id'], placa,
+            )
+            if not veics:
+                continue
+
+            senha = base64.b64decode(t['password_enc'].encode()).decode()
+            client = MultiportalClientSimple(
+                base_url=cfg.multiportal_base_url,
+                username=t['username'], password=senha, appid=t['appid'],
+            )
+            try:
+                for v in veics:
+                    recebidas = gravadas = 0
+                    erro_veiculo = None
+                    dia = de
+                    while dia <= ate:
+                        ini = datetime(dia.year, dia.month, dia.day, 0, 0, 0, tzinfo=brt)
+                        fim = ini + timedelta(days=1) - timedelta(milliseconds=1)
+                        try:
+                            bruto = await client.posicoes_veiculo(
+                                int(v['id_multiportal']),
+                                int(ini.timestamp() * 1000), int(fim.timestamp() * 1000),
+                            )
+                        except Exception as e:
+                            erro_veiculo = f'{dia.isoformat()}: {e}'
+                            log.error('backfill.consulta_erro', placa=v['placa'],
+                                      dia=dia.isoformat(), error=str(e))
+                            dia += timedelta(days=1)
+                            continue
+
+                        posicoes = _extrair_posicoes(bruto)
+                        recebidas += len(posicoes)
+
+                        if posicoes and not dry:
+                            # Motorista vinculado NAQUELE dia (e não o de hoje).
+                            motorista_id = await db.fetchval(
+                                'SELECT fn_motorista_em($1::uuid, $2::uuid, $3)::text',
+                                t['tenant_id'], v['veiculo_id'], ini,
+                            )
+                            registros = []
+                            for pos in posicoes:
+                                try:
+                                    r = processar_posicao(v['veiculo_id'], motorista_id,
+                                                          t['tenant_id'], pos)
+                                except Exception as e:
+                                    log.warning('backfill.posicao_erro', placa=v['placa'], error=str(e))
+                                    r = None
+                                if r:
+                                    r['componentes_raw'] = json.dumps(
+                                        pos.get('componentes') or [], ensure_ascii=False)
+                                    registros.append(r)
+                            if registros:
+                                await _gravar_leituras(db, registros)
+                                gravadas += len(registros)
+                        dia += timedelta(days=1)
+
+                    resumo['veiculos'].append({
+                        'placa': v['placa'], 'posicoes_recebidas': recebidas,
+                        'leituras_gravadas': gravadas,
+                        **({'erro': erro_veiculo} if erro_veiculo else {}),
+                    })
+                    resumo['posicoes_recebidas'] += recebidas
+                    resumo['leituras_gravadas'] += gravadas
+                    log.info('backfill.veiculo', placa=v['placa'],
+                             recebidas=recebidas, gravadas=gravadas)
+            finally:
+                await client.close()
+    finally:
+        await db.close()
+
+    # Recalcula km_rodado + indicadores + notas de cada mês tocado.
+    if not dry and resumo['leituras_gravadas'] > 0:
+        meses, cursor = [], date(de.year, de.month, 1)
+        while cursor <= ate:
+            meses.append((cursor.year, cursor.month))
+            cursor = date(cursor.year + (cursor.month // 12), (cursor.month % 12) + 1, 1)
+        for ano, mes in meses:
+            try:
+                await _recalcular_mes(ano, mes)
+            except Exception as e:
+                log.error('backfill.recalculo_erro', ano=ano, mes=mes, error=str(e))
+        resumo['meses_recalculados'] = [f'{a}-{m:02d}' for a, m in meses]
+
+    return resumo
 
 
 # ── Loop principal ────────────────────────────────────────────
@@ -569,6 +736,37 @@ async def calcular_indicadores(req: IndicadoresRequest):
         date.fromisoformat(req.periodo_fim),
     )
     return {'status': 'ok', 'mensagem': 'Indicadores calculados'}
+
+
+@api.api_route('/jobs/backfill', methods=['GET', 'POST'])
+async def backfill_manual(de: str, ate: str, placa: str | None = None, dry: bool = False):
+    """Recupera telemetria histórica de um período em que a ingestão ficou parada.
+
+    de/ate = YYYY-MM-DD (datas de Brasília, intervalo fechado).
+    placa  = opcional; sem ela, processa toda a frota ativa.
+    dry    = true para apenas CONSULTAR e relatar, sem gravar nada.
+
+    Idempotente: reprocessar o mesmo período não duplica leituras.
+    Ao final, recalcula km_rodado, indicadores e notas dos meses tocados.
+    Ex.: /jobs/backfill?de=2026-07-12&ate=2026-09-13&dry=true&token=SEU_TOKEN
+    """
+    import re as _re
+    if not (_re.fullmatch(r'\d{4}-\d{2}-\d{2}', de or '')
+            and _re.fullmatch(r'\d{4}-\d{2}-\d{2}', ate or '')):
+        return JSONResponse({'status': 'erro',
+                             'mensagem': 'de/ate devem estar no formato YYYY-MM-DD'},
+                            status_code=400)
+    try:
+        d1, d2 = date.fromisoformat(de), date.fromisoformat(ate)
+    except ValueError as e:
+        return JSONResponse({'status': 'erro', 'mensagem': f'data inválida: {e}'}, status_code=400)
+    if d1 > d2:
+        return JSONResponse({'status': 'erro', 'mensagem': '"de" deve ser <= "ate"'}, status_code=400)
+    if (d2 - d1).days > 180:
+        return JSONResponse({'status': 'erro', 'mensagem': 'período máximo: 180 dias'}, status_code=400)
+
+    resumo = await _backfill(d1, d2, placa or None, dry)
+    return {'status': 'ok', **resumo}
 
 
 @api.get('/jobs/recalcular-mes')
