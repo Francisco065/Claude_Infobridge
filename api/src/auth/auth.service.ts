@@ -2,8 +2,6 @@ import {
   Injectable, UnauthorizedException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 
-/** Senha provisória padrão definida no "esqueci a senha" (uso único; troca obrigatória). */
-const SENHA_PADRAO = 'Infobridge@2026';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { JwtService }        from '@nestjs/jwt';
@@ -121,15 +119,23 @@ export class AuthService {
   }
 
   // ── Reset de Senha ────────────────────────────────────────
+  /**
+   * Registra o PEDIDO de redefinição. NÃO altera senha nenhuma.
+   *
+   * A implementação anterior gravava uma senha fixa conhecida no usuário a
+   * partir de uma rota pública — qualquer pessoa que soubesse um e-mail
+   * cadastrado assumia a conta (inclusive de admin). Enquanto não houver
+   * infraestrutura de e-mail para um fluxo com token de uso único, a
+   * redefinição acontece apenas pelo caminho autenticado
+   * `PATCH /usuarios/:id/redefinir-senha`, restrito a administradores.
+   *
+   * A resposta é sempre a mesma, exista ou não o e-mail, para não revelar
+   * quais endereços estão cadastrados.
+   */
   async solicitarResetSenha(dto: SolicitarResetSenhaDto) {
     const u = await this.db.getRepository(Usuario).findOne({ where: { email: dto.email.toLowerCase(), ativo: true } });
-    if (!u) return; // não revelar se e-mail existe
-    // Sem infra de e-mail: define a senha provisória padrão e exige troca no 1º login.
-    await this.db.getRepository(Usuario).update(u.id, {
-      senhaHash: await bcrypt.hash(SENHA_PADRAO, BCRYPT_ROUNDS),
-      precisaTrocarSenha: true,
-    });
-    this.logger.log(`Reset (senha provisória) aplicado: ${u.email}`);
+    if (!u) return;
+    this.logger.log(`Pedido de redefinição de senha registrado: ${u.email} (requer ação de um administrador)`);
   }
 
   async confirmarResetSenha(dto: ConfirmarResetSenhaDto) {

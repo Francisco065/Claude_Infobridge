@@ -17,6 +17,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import signal
 import sys
 import time
@@ -28,6 +29,7 @@ import asyncpg
 import httpx
 import structlog
 from fastapi import FastAPI, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config import get_settings
@@ -475,6 +477,36 @@ async def lifespan(app: FastAPI):
 
 
 api = FastAPI(title='Infobridge Worker', lifespan=lifespan)
+
+
+# ── Autenticação das rotas administrativas ───────────────────
+# O serviço é público na internet. Antes disto, /debug/* exportava telemetria
+# bruta (GPS, endereços) de qualquer placa sem filtro de tenant, e /jobs/*
+# disparava escrita em massa no banco — inclusive por GET, alcançável por um
+# simples acesso de navegador ou crawler.
+#
+# Middleware por PREFIXO (e não dependência rota a rota) para que qualquer
+# endpoint novo em /debug ou /jobs nasça protegido por padrão.
+# /health fica aberto: é o healthcheck da plataforma.
+_ROTAS_PROTEGIDAS = ('/debug', '/jobs')
+
+
+@api.middleware('http')
+async def exigir_token_admin(request, call_next):
+    if request.url.path.startswith(_ROTAS_PROTEGIDAS):
+        esperado = os.getenv('WORKER_API_TOKEN')
+        # Falha fechada: sem token configurado, ninguém entra.
+        if not esperado:
+            return JSONResponse(
+                {'detail': 'WORKER_API_TOKEN não configurado no serviço — '
+                           'rotas administrativas desabilitadas por segurança.'},
+                status_code=503,
+            )
+        recebido = request.headers.get('x-worker-token') or request.query_params.get('token') or ''
+        if not secrets.compare_digest(recebido, esperado):
+            log.warning('worker.acesso_negado', path=request.url.path)
+            return JSONResponse({'detail': 'Não autorizado'}, status_code=401)
+    return await call_next(request)
 
 
 @api.get('/health')

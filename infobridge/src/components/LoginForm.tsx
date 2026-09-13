@@ -82,11 +82,12 @@ export default function LoginForm({
   async function esqueciSenha() {
     setErro(""); setInfo("");
     if (!email) { setErro("Informe o e-mail para recuperar a senha."); return; }
+    const aviso = "Pedido registrado. Por segurança, a redefinição é feita por um administrador — procure o responsável pelo painel para receber uma senha provisória.";
     try {
       await apiSolicitarReset(email);
-      setInfo("Se o e-mail existir, a senha provisória Infobridge@2026 foi definida. Entre com ela — será exigida a troca da senha.");
+      setInfo(aviso);
     } catch {
-      setInfo("Se o e-mail existir, a senha provisória Infobridge@2026 foi definida. Entre com ela — será exigida a troca da senha.");
+      setInfo(aviso);
     }
   }
 

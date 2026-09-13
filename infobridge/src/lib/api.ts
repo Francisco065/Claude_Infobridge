@@ -222,7 +222,10 @@ export async function apiPost<T>(path: string, token: string, body: unknown): Pr
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.error?.message ?? err?.mensagem ?? err?.message ?? `Erro ${res.status}: ${path}`);
   }
-  return res.json() as Promise<T>;
+  // Respostas sem corpo (204 No Content — ex.: POST /auth/alterar-senha) fazem
+  // res.json() rejeitar. Sem este catch a troca de senha concluía no servidor
+  // mas exibia erro na tela, prendendo o usuário fora do painel.
+  return res.json().catch(() => ({})) as Promise<T>;
 }
 
 export async function apiDelete<T>(path: string, token: string): Promise<T> {
