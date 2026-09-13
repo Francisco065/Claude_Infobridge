@@ -1,16 +1,19 @@
 // Configuração ÚNICA das camadas de mapa (Leaflet).
 //
-// Antes, as URLs de tile estavam escritas à mão em 4 pontos de 2 páginas, e
-// já tinham divergido: o Mapa ao vivo declarava atribuição e o mapa da
-// Performance não declarava nenhuma — omissão que viola os termos de uso de
-// CARTO/OpenStreetMap e da Esri, e é motivo comum de bloqueio pelo provedor.
+// O modo "Mapa" usava a CARTO (basemaps.cartocdn.com/light_all), que passou a
+// EXIGIR chave: os tiles voltavam marcados com "API KEY REQUIRED" por cima de
+// toda a tela. O modo "Satélite" usa a Esri e continuou funcionando. Como a
+// Esri já é uma dependência comprovadamente ativa aqui, o padrão do "Mapa"
+// passou para o basemap de ruas da Esri — mesmo host, sem chave, sem marca
+// d'água.
 //
-// O provedor é configurável por ambiente. Sem nenhuma variável definida, o
-// comportamento é o mesmo de hoje (CARTO + Esri, sem chave), então nada muda
-// até que uma configuração seja informada.
+// Antes, as URLs estavam escritas à mão em 4 pontos de 2 páginas e já tinham
+// divergido: o Mapa ao vivo declarava atribuição e o da Performance não
+// declarava nenhuma — omissão que viola os termos de uso dos provedores.
 //
-// Para usar um provedor que exija chave, informe a URL com o marcador {key}:
-//   NEXT_PUBLIC_TILE_URL_ROADMAP=https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key={key}
+// Tudo é configurável por ambiente; para um provedor que exija chave, use o
+// marcador {key} na URL:
+//   NEXT_PUBLIC_TILE_URL_ROADMAP=https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key={key}
 //   NEXT_PUBLIC_TILE_KEY=sua_chave
 //   NEXT_PUBLIC_TILE_ATTR_ROADMAP=© MapTiler © OpenStreetMap
 //
@@ -20,7 +23,7 @@
 
 export type TipoMapa = "roadmap" | "satellite";
 
-const PADRAO_ROADMAP   = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+const PADRAO_ROADMAP   = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const PADRAO_SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 
 const CHAVE = process.env.NEXT_PUBLIC_TILE_KEY ?? "";
@@ -31,7 +34,7 @@ const URLS: Record<TipoMapa, string> = {
 };
 
 const ATRIBUICOES: Record<TipoMapa, string> = {
-  roadmap:   process.env.NEXT_PUBLIC_TILE_ATTR_ROADMAP   || "© OpenStreetMap · © CARTO",
+  roadmap:   process.env.NEXT_PUBLIC_TILE_ATTR_ROADMAP   || "© Esri · © OpenStreetMap",
   satellite: process.env.NEXT_PUBLIC_TILE_ATTR_SATELLITE || "© Esri",
 };
 
@@ -55,11 +58,15 @@ export function atribuicao(tipo: TipoMapa): string {
  * parâmetro em vez de import.
  */
 export function criarCamada(L: any, tipo: TipoMapa, extra: Record<string, unknown> = {}) {
+  const url = urlTile(tipo);
   const opcoes: Record<string, unknown> = {
     maxZoom: 19,
     attribution: atribuicao(tipo),
-    ...(tipo === "roadmap" ? { subdomains: "abcd" } : {}),
+    // subdomains só faz sentido quando a URL tem o marcador {s} (CARTO, OSM).
+    // Endpoints da Esri não usam — derivar da URL evita quebrar ao trocar de
+    // provedor por variável de ambiente.
+    ...(url.includes("{s}") ? { subdomains: "abcd" } : {}),
     ...extra,
   };
-  return L.tileLayer(urlTile(tipo), opcoes);
+  return L.tileLayer(url, opcoes);
 }
