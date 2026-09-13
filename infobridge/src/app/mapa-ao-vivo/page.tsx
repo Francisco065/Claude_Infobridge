@@ -10,6 +10,7 @@ import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import SemAcesso from "@/components/SemAcesso";
 import LogoInfobridge from "@/components/LogoInfobridge";
 import MenuNavegacao from "@/components/MenuNavegacao";
+import { criarCamada, chaveFaltando } from "@/lib/mapa";
 
 // ── Paleta / tipografia (mesmo sistema da Info Análise / Cadastros) ──
 const VINHO = "#6E1414";
@@ -269,8 +270,8 @@ export default function MapaAoVivoPage() {
     const map = L.map(mapDivRef.current, { zoomControl: false, attributionControl: true }).setView([-15.6, -43.5], 4.3);
     L.control.zoom({ position: "bottomright" }).addTo(map);
     layersRef.current = {
-      roadmap: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd", errorTileUrl: blank, attribution: "© OpenStreetMap · © CARTO" }),
-      satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, errorTileUrl: blank, attribution: "© Esri" }),
+      roadmap:   criarCamada(L, "roadmap",   { errorTileUrl: blank }),
+      satellite: criarCamada(L, "satellite", { errorTileUrl: blank }),
     };
     markerLayerRef.current = L.layerGroup();
     requestAnimationFrame(() => {
@@ -510,6 +511,12 @@ export default function MapaAoVivoPage() {
         {/* Área do mapa */}
         <div ref={mapAreaRef} style={{ flex: 1, position: "relative", minWidth: 0, background: "#E9EBEF" }}>
           <div ref={mapDivRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+          {chaveFaltando(mapType) && (
+            <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, background: "#FFFFFF", border: "1px solid #E7E9ED", borderLeft: "3px solid #D97706", borderRadius: 12, boxShadow: "0 1px 3px rgba(30,32,40,.04)", padding: "10px 13px", maxWidth: 320 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1F2024" }}>Chave do mapa não configurada</div>
+              <div style={{ fontSize: 11.5, color: "#6B6E76", marginTop: 3 }}>O provedor configurado exige chave. Defina <b>NEXT_PUBLIC_TILE_KEY</b> e republique o frontend.</div>
+            </div>
+          )}
 
           <div style={{ position: "absolute", top: 14, left: 14, zIndex: 30, display: "flex", background: "#FFFFFF", borderRadius: 10, boxShadow: "0 2px 8px rgba(30,32,40,.16)", overflow: "hidden", border: "1px solid #E7E9ED" }}>
             <button onClick={() => setMapType("roadmap")} style={{ padding: "7px 15px", fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: SANS, background: mapType === "roadmap" ? "#F4EDED" : "#FFFFFF", color: mapType === "roadmap" ? VINHO : "#5A5D65" }}>Mapa</button>

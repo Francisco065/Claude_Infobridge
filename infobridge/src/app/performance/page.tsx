@@ -9,6 +9,7 @@ import SemAcesso from "@/components/SemAcesso";
 import BotaoTrocarSenha from "@/components/BotaoTrocarSenha";
 import LogoInfobridge from "@/components/LogoInfobridge";
 import MenuNavegacao from "@/components/MenuNavegacao";
+import { criarCamada, chaveFaltando } from "@/lib/mapa";
 
 // ── Paleta / tipografia (idêntica ao handoff) ─────────────────
 const VINHO = "#6E1414", AZUL = "#2563EB", VERDE = "#16A34A", AMBAR = "#D97706";
@@ -380,10 +381,7 @@ export default function PerformancePage() {
     const L = (window as any).L;
     const map = L.map(mapDivRef.current, { zoomControl: true, attributionControl: true }).setView([-15.78, -47.92], 4);
     mapRef.current = map; layerRef.current = L.layerGroup().addTo(map);
-    tileRef.current = (mapTypeRef.current === "satellite"
-      ? L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 })
-      : L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" })
-    ).addTo(map);
+    tileRef.current = criarCamada(L, mapTypeRef.current).addTo(map);
     const t = setTimeout(() => map.invalidateSize(), 60);
     return () => {
       clearTimeout(t);
@@ -396,9 +394,7 @@ export default function PerformancePage() {
   useEffect(() => {
     if (!mapRef.current) return; const L = (window as any).L;
     if (tileRef.current) mapRef.current.removeLayer(tileRef.current);
-    tileRef.current = mapType === "satellite"
-      ? L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 })
-      : L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" });
+    tileRef.current = criarCamada(L, mapType);
     tileRef.current.addTo(mapRef.current);
   }, [mapType]);
 
@@ -694,6 +690,12 @@ export default function PerformancePage() {
                   {leafletFalhou && (
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(233,235,239,.9)", borderRadius: 12, textAlign: "center", padding: 20 }}>
                       <div><i className="ti ti-wifi-off" aria-hidden style={{ fontSize: 30, color: "#8A8D96" }} /><div style={{ fontSize: 14, color: "#5A5D65", fontWeight: 600, marginTop: 8 }}>Não foi possível carregar o mapa</div><div style={{ fontSize: 12, color: "#8A8D96", marginTop: 4 }}>Verifique a conexão com a internet e recarregue a página.</div></div>
+                    </div>
+                  )}
+                  {chaveFaltando(mapType) && (
+                    <div style={{ position: "absolute", top: 12, left: 12, zIndex: 1000, ...card, padding: "10px 13px", maxWidth: 320, borderLeft: `3px solid ${AMBAR}` }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1F2024" }}>Chave do mapa não configurada</div>
+                      <div style={{ fontSize: 11.5, color: "#6B6E76", marginTop: 3 }}>O provedor configurado exige chave. Defina <b>NEXT_PUBLIC_TILE_KEY</b> e republique o frontend.</div>
                     </div>
                   )}
                   {viewMode === "frota" && placasMapa.length === 0 && (
